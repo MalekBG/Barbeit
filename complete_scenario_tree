@@ -1,0 +1,4 @@
+// Scenario Tree
+digraph {
+	0 [label=Root]
+}
