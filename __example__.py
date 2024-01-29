@@ -1,5 +1,6 @@
 from simulator import Simulator
 from graphviz import Digraph
+from collections import deque
 
 
 class ScenarioNode:
@@ -18,42 +19,46 @@ class ScenarioTree:
         self.root = ScenarioNode()
         self.max_depth = max_depth
 
-    def generate_tree(self, current_node, unassigned_tasks, resource_pool, depth=0):
-        print(f"Generating tree at depth {depth} with {len(unassigned_tasks)} unassigned tasks")  # Debugging print
-        
-        if depth == self.max_depth or not unassigned_tasks:
-            return
+    def generate_tree(self, root, unassigned_tasks, resource_pool, max_depth=2):
+        queue = deque([(root, unassigned_tasks, 0)])  # Queue contains tuples of (node, remaining_tasks, depth)
 
-        for task in unassigned_tasks:
-            for resource in current_node.available_resources:
-                if resource in resource_pool[task.task_type]:
-                    # Create a new child node with this task assigned to this resource
-                    assigned_tasks = current_node.assigned_tasks + [(task, resource)]
-                    available_resources = list(current_node.available_resources)
-                    available_resources.remove(resource)
-                    child_node = ScenarioNode(assigned_tasks, available_resources, current_node)
-                    current_node.add_child(child_node)
-                    print(f"Added child node with task {task.id} and resource {resource}")  # Debugging print
+        while queue:
+            current_node, tasks, depth = queue.popleft()
 
-                    # Recursively generate the tree from this child node
-                    remaining_tasks = list(unassigned_tasks)
-                    remaining_tasks.remove(task)
-                    self.generate_tree(child_node, remaining_tasks, resource_pool, depth + 1)
+            if depth >= max_depth or not tasks:
+                continue
+
+            # Generate all possible child nodes for the current node
+            for task in tasks:
+                for resource in current_node.available_resources:
+                    if resource in resource_pool[task.task_type]:
+                        # Create a new child node with this task assigned to this resource
+                        assigned_tasks = current_node.assigned_tasks + [(task, resource)]
+                        available_resources = list(current_node.available_resources)
+                        available_resources.remove(resource)
+                        child_node = ScenarioNode(assigned_tasks, available_resources, current_node)
+                        current_node.add_child(child_node)
+
+                        # Prepare the remaining tasks for the child node
+                        remaining_tasks = list(tasks)
+                        remaining_tasks.remove(task)
+
+                        # Add the child node to the queue with its remaining tasks and increased depth
+                        queue.append((child_node, remaining_tasks, depth + 1))
 
 
 class MyPlanner:
-    def plan(self, available_resources, unassigned_tasks, resource_pool):
-        # Initialize the scenario tree
-        scenario_tree = ScenarioTree(max_depth=2)
+    def plan(self, scenario_tree, available_resources, unassigned_tasks, resource_pool):
+        
         scenario_tree.root.available_resources = available_resources
 
+        
         # Generate the scenario tree
-        scenario_tree.generate_tree(scenario_tree.root, unassigned_tasks, resource_pool)
+        scenario_tree.generate_tree(scenario_tree.root, unassigned_tasks, resource_pool, scenario_tree.max_depth)
 
-        # For simplicity, return the first scenario's assignments
-        # In a real scenario, you would analyze the tree to choose the best scenario
+
         if scenario_tree.root.children:
-            return scenario_tree.root.children[0].assigned_tasks
+            return scenario_tree.root.assigned_tasks
         return []
 
 
@@ -63,6 +68,7 @@ class MyPlanner:
 
 def visualize_scenario_tree(root):
     dot = Digraph(comment='Scenario Tree')
+    dot.attr(rankdir='LR')  # Set graph orientation from left to right
     node_counter = 0  # Counter to keep track of node IDs
 
     def add_nodes_edges(node, parent_id=None):
@@ -105,8 +111,7 @@ def print_tree_structure(node, depth=0):
 my_planner = MyPlanner()
 scenario_tree = ScenarioTree(max_depth=2)
 simulator = Simulator(my_planner, scenario_tree, "BPI Challenge 2017 - instance 2.pickle")
-avg_cycle_time, completion_msg, scenario_tree = simulator.run(1*5)
-print_tree_structure(scenario_tree.root)
+avg_cycle_time, completion_msg, scenario_tree = simulator.run(1)
 
 # Visualize the complete scenario tree
 dot = visualize_scenario_tree(scenario_tree.root)

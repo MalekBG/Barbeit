@@ -169,9 +169,10 @@ class Simulator:
 				self.events.sort()
 			elif event.event_type == EventType.PLAN_TASKS:
 				if len(self.unassigned_tasks) > 0 and len(self.available_resources) > 0:
-					assignments = self.planner.plan(self.available_resources.copy(), list(self.unassigned_tasks.values()), self.problem_resource_pool)
+					assignments = self.planner.plan(self.scenario_tree, self.available_resources.copy(), list(self.unassigned_tasks.values()), self.problem_resource_pool)
 					moment = self.now
-					for (task, resource) in assignments:
+					#for single_decision in assignments:
+					for (task,resource) in assignments:
 						if task not in self.unassigned_tasks.values():
 							return None, "ERROR: trying to assign a task that is not in the unassigned_tasks."
 						if resource not in self.available_resources:
