@@ -1,6 +1,8 @@
 from simulator import Simulator
 from graphviz import Digraph
 from collections import deque
+from collections import defaultdict
+import heapq
 
 
 class ScenarioNode:
@@ -33,14 +35,15 @@ class ScenarioTree:
                 for resource in current_node.available_resources:
                     if resource in resource_pool[task.task_type]:
                         # Create a new child node with this task assigned to this resource
-                        assigned_tasks = current_node.assigned_tasks + [(task, resource)]
-                        available_resources = list(current_node.available_resources)
+                        assigned_tasks = current_node.assigned_tasks.copy()
+                        assigned_tasks.append((task, resource))
+                        available_resources = set(current_node.available_resources)
                         available_resources.remove(resource)
                         child_node = ScenarioNode(assigned_tasks, available_resources, current_node)
                         current_node.add_child(child_node)
 
                         # Prepare the remaining tasks for the child node
-                        remaining_tasks = list(tasks)
+                        remaining_tasks = tasks.copy()
                         remaining_tasks.remove(task)
 
                         # Add the child node to the queue with its remaining tasks and increased depth
@@ -95,6 +98,7 @@ def visualize_scenario_tree(root):
 
     return dot
 
+#Debugging function to print the scenario tree structure
 def print_tree_structure(node, depth=0):
     indent = "  " * depth  # Create indentation based on depth
     if node.assigned_tasks:
@@ -105,13 +109,62 @@ def print_tree_structure(node, depth=0):
 
     for child in node.children:
         print_tree_structure(child, depth + 1)
+        
+def remove_duplicates_bfs(root):
+    if not root or not root.children:
+        return
+
+    queue = deque([(root, 0)])  # Queue contains tuples of (node, depth)
+    current_depth_nodes = []  # To store nodes at the current depth
+    last_depth = 0
+
+    while queue:
+        node, depth = queue.popleft()
+
+        # Process nodes at the same depth
+        if depth == last_depth:
+            current_depth_nodes.append(node)
+        else:
+            # Process the previous depth nodes before moving to the next depth
+            process_depth_nodes(current_depth_nodes)
+            current_depth_nodes = [node]
+            last_depth = depth
+
+        # Add child nodes to the queue
+        for child in node.children:
+            queue.append((child, depth + 1))
+
+    # Process the last set of nodes
+    process_depth_nodes(current_depth_nodes)
+
+def process_depth_nodes(nodes):
+    if not nodes:
+        return
+
+    # Group nodes by their task-resource assignments
+    assignment_groups = defaultdict(list)
+    for node in nodes:
+        key = ', '.join([f'T{t.id}-R{r}' for t, r in node.assigned_tasks])
+        assignment_groups[key].append(node)
+
+    # For each group, keep the node with the most children and remove the others
+    for key, group_nodes in assignment_groups.items():
+        if len(group_nodes) > 1:
+            # Find the node with the most children
+            max_children_node = heapq.nlargest(1, group_nodes, key=lambda n: len(n.children))[0]
+            # Remove all other nodes from their parent's children list
+            for node in group_nodes:
+                if node is not max_children_node:
+                    if node.parent:
+                        node.parent.children.remove(node)
 
 
 
 my_planner = MyPlanner()
-scenario_tree = ScenarioTree(max_depth=2)
-simulator = Simulator(my_planner, scenario_tree, "BPI Challenge 2017 - instance 2.pickle")
-avg_cycle_time, completion_msg, scenario_tree = simulator.run(1)
+scenario_tree = ScenarioTree(max_depth=3)
+simulator = Simulator(my_planner, scenario_tree, "BPI Challenge 2017 - instance.pickle")
+avg_cycle_time, completion_msg, scenario_tree = simulator.run(2)
+remove_duplicates_bfs(scenario_tree.root)
 
 # Visualize the complete scenario tree
 dot = visualize_scenario_tree(scenario_tree.root)
@@ -120,4 +173,3 @@ dot.render('complete_scenario_tree', view=True, format='pdf')
 # Print the simulation results
 print(f"Average Cycle Time: {avg_cycle_time}")
 print(completion_msg)
-
