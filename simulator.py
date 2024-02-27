@@ -2,6 +2,7 @@ from enum import Enum, auto
 from datetime import datetime, timedelta
 import random
 from problems import MinedProblem
+import pickle
 
 RUNNING_TIME = 24 * 365
 
@@ -83,6 +84,7 @@ class Simulator:
 		self.planner = planner
 		self.scenario_tree = scenario_tree
 		self.problem_resource_pool = self.problem.resource_pools
+		self.current_state = None
 		self.init_simulation()
 
 	def init_simulation(self):
@@ -92,12 +94,36 @@ class Simulator:
 		self.problem.restart()
 		(t, task) = self.problem.next_case()
 		self.events.append((t, SimulationEvent(EventType.CASE_ARRIVAL, t, task)))
+		self.current_state = {
+			'now': self.now,
+			'events': self.events,
+			'unassigned_tasks': self.unassigned_tasks,
+			'assigned_tasks': self.assigned_tasks,
+			'available_resources': self.available_resources,
+			'busy_resources': self.busy_resources,
+			'reserved_resources': self.reserved_resources,
+			'busy_cases': self.busy_cases
+		}
+		self.scenario_tree.root.state_id = 'initial_state'
 
 	def desired_nr_resources(self):
 		return self.problem.schedule[int(self.now % len(self.problem.schedule))]
 
 	def working_nr_resources(self):
 		return len(self.available_resources) + len(self.busy_resources) + len(self.reserved_resources)
+
+	def load_simulation_state(self, filename):
+		with open(filename, 'rb') as file:
+			state_to_load = pickle.load(file)
+		self.now = state_to_load['now']
+		self.events = state_to_load['events']
+		self.unassigned_tasks = state_to_load['unassigned_tasks']
+		self.assigned_tasks = state_to_load['assigned_tasks']
+		self.available_resources = state_to_load['available_resources']
+		self.busy_resources = state_to_load['busy_resources']
+		self.reserved_resources = state_to_load['reserved_resources']
+		self.busy_cases = state_to_load['busy_cases']
+		self.current_state = state_to_load
 
 	def run(self, running_time=RUNNING_TIME):
 		while self.now <= running_time:
