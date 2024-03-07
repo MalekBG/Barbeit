@@ -30,15 +30,20 @@ class ScenarioTree:
 
 
     def generate_tree(self, root, unassigned_tasks, resource_pool, max_depth=2):
+        #print("Generating tree with root node")
+        #print("Root Available Resources:", root.available_resources)
+       #print("Root Assigned Tasks:", root.assigned_tasks)
         queue = deque([(root, unassigned_tasks, 0)])  # Queue contains tuples of (node, remaining_tasks, depth)
 
         while queue:
             current_node, tasks, depth = queue.popleft()
 
             if depth >= max_depth or not tasks:
+                #print('assigned_tasks after:', root.assigned_tasks)
                 continue
 
             # Generate all possible child nodes for the current node
+            #print(f"Processing node at depth {depth} with tasks:", tasks)
             for task in tasks:
                 for resource in current_node.available_resources:
                     if resource in resource_pool[task.task_type]:
@@ -47,26 +52,33 @@ class ScenarioTree:
                         assigned_tasks.append((task, resource))
                         available_resources = set(current_node.available_resources)
                         available_resources.remove(resource)
-                        child_id = ', '.join([f'T{t.id}-R{r}' for t, r in assigned_tasks]) if assigned_tasks else 'None'
+                        child_id = ', '.join([f'T{t.id}-R{r}-TS:{self.sim_state.simulator.now}' for t, r in assigned_tasks]) if assigned_tasks else 'None'
                         child_node = ScenarioNode(assigned_tasks, available_resources, current_node, child_id, self.sim_state.simulator.now)
+                        root.assigned_tasks.append((task, resource))
+                        #print(f"Assigning Task {task.id} to Resource {resource}")
+                        #print(f"Created Child Node ID: {child_id}")
                         current_node.add_child(child_node)
-                        #self.sim_state.save_simulation_state(child_id + '.pickle')
+                        #self.sim_state.save_simulation_state(f'{child_id}.pickle')
 
                         # Prepare the remaining tasks for the child node
                         remaining_tasks = tasks.copy()
                         remaining_tasks.remove(task)
 
                         # Add the child node to the queue with its remaining tasks and increased depth
+                        #print(f"Adding Child Node to Queue - ID: {child_id}, Remaining Tasks:", remaining_tasks)
                         queue.append((child_node, remaining_tasks, depth + 1))
 
 
 
 class MyPlanner:
     def plan(self, scenario_tree, available_resources, unassigned_tasks, resource_pool):
+        #print("Starting plan() method")
+        #print("Unassigned Tasks:", unassigned_tasks)
         scenario_tree.root.available_resources = available_resources
         
         # Generate the scenario tree
         scenario_tree.generate_tree(scenario_tree.root, unassigned_tasks, resource_pool, scenario_tree.max_depth)
+        #print('Children of root:', scenario_tree.root.children)
         
         if scenario_tree.root.children:
             return scenario_tree.root.assigned_tasks
@@ -179,7 +191,12 @@ class SimState:
 			'available_resources': self.simulator.available_resources,
 			'busy_resources': self.simulator.busy_resources,
 			'reserved_resources': self.simulator.reserved_resources,
-			'busy_cases': self.simulator.busy_cases
+			'busy_cases': self.simulator.busy_cases,
+            'away_resources': self.simulator.away_resources,
+            'away_resources_weights': self.simulator.away_resources_weights,
+            'finalized_cases': self.simulator.finalized_cases,
+            'total_cycle_time': self.simulator.total_cycle_time,
+            'auto': self.simulator.auto
 		}
         with open(filename, 'wb') as file:
             pickle.dump(self.simulator.current_state, file)
@@ -195,6 +212,12 @@ class SimState:
             self.simulator.available_resources = self.simulator.current_state['available_resources']
             self.simulator.busy_resources = self.simulator.current_state['busy_resources']
             self.simulator.reserved_resources = self.simulator.current_state['reserved_resources']
+            self.simulator.busy_cases = self.simulator.current_state['busy_cases']
+            self.simulator.away_resources = self.simulator.current_state['away_resources']
+            self.simulator.away_resources_weights = self.simulator.current_state['away_resources_weights']
+            self.simulator.finalized_cases = self.simulator.current_state['finalized_cases']
+            self.simulator.total_cycle_time = self.simulator.current_state['total_cycle_time']
+            self.simulator.auto = self.simulator.current_state['auto']
             
     
     
@@ -212,13 +235,14 @@ scenario_tree = ScenarioTree(max_depth=3)
 simulator = Simulator(my_planner, scenario_tree, "BPI Challenge 2017 - instance.pickle")
 sim_state = SimState(simulator)
 scenario_tree.sim_state = sim_state
-avg_cycle_time, completion_msg, scenario_tree = simulator.run(2)
+#avg_cycle_time, completion_msg, scenario_tree = simulator.run(5)
 #remove_duplicates(scenario_tree.root)
 
 # Visualize the complete scenario tree
-dot = visualize_scenario_tree(scenario_tree.root)
-dot.render('scenario_tree', view=True, format='pdf')
+#dot = visualize_scenario_tree(scenario_tree.root)
+#dot.render('scenario_tree', view=True, format='pdf')
 
 # Print the simulation results
-print(f"Average Cycle Time: {avg_cycle_time}")
-print(completion_msg)
+#print(f"Average Cycle Time: {avg_cycle_time}")
+#print(completion_msg)
+print(simulator.run(5))

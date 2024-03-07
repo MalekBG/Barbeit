@@ -1,3 +1,4 @@
+from collections import deque
 from enum import Enum, auto
 from datetime import datetime, timedelta
 import random
@@ -85,6 +86,7 @@ class Simulator:
 		self.scenario_tree = scenario_tree
 		self.problem_resource_pool = self.problem.resource_pools
 		self.current_state = None
+		self.auto = True
 		self.init_simulation()
 
 	def init_simulation(self):
@@ -102,7 +104,12 @@ class Simulator:
 			'available_resources': self.available_resources,
 			'busy_resources': self.busy_resources,
 			'reserved_resources': self.reserved_resources,
-			'busy_cases': self.busy_cases
+			'busy_cases': self.busy_cases,
+			'away_resources': self.away_resources,
+			'away_resources_weights': self.away_resources_weights,
+			'finalized_cases': self.finalized_cases,
+			'total_cycle_time': self.total_cycle_time,
+			'auto': self.auto
 		}
 		self.scenario_tree.root.state_id = 'initial_state'
 
@@ -123,10 +130,29 @@ class Simulator:
 		self.busy_resources = state_to_load['busy_resources']
 		self.reserved_resources = state_to_load['reserved_resources']
 		self.busy_cases = state_to_load['busy_cases']
+		self.away_resources = state_to_load['away_resources']
+		self.away_resources_weights = state_to_load['away_resources_weights']
+		self.finalized_cases = state_to_load['finalized_cases']
+		self.total_cycle_time = state_to_load['total_cycle_time']
 		self.current_state = state_to_load
+		self.auto = state_to_load['auto']
 
 	def run(self, running_time=RUNNING_TIME):
-		while self.now <= running_time:
+		# Initial message to the user
+		while True:
+			user_input = input("Write 'auto' if you want the simulation to run automatically for the specified running time or 'stop' to stop at each decision point: ").lower()
+			if user_input == 'auto':
+				self.auto = True
+				break
+			elif user_input == 'stop':
+				self.auto = False
+				break
+			else:
+				print("Incorrect answer, try again:")
+		# Decision Point flag when the simulation is running in 'auto' mode to stop the simulation and load the parent state
+		decision_point_reached = False
+    
+		while not decision_point_reached and self.now <= running_time:
 			event = self.events.pop(0)
 			self.now = event[0]
 			event = event[1]
@@ -197,21 +223,22 @@ class Simulator:
 				if len(self.unassigned_tasks) > 0 and len(self.available_resources) > 0:
 					assignments = self.planner.plan(self.scenario_tree, self.available_resources.copy(), list(self.unassigned_tasks.values()), self.problem_resource_pool)
 					moment = self.now
-					#for single_decision in assignments:
+					print ('Assignments:', assignments)
+					print('Unassigned tasks:', self.unassigned_tasks)
 					for (task,resource) in assignments:
+						print('Task: T', task.id)
+						print('Resource:', resource)
 						if task not in self.unassigned_tasks.values():
 							return None, "ERROR: trying to assign a task that is not in the unassigned_tasks."
 						if resource not in self.available_resources:
 							return None, "ERROR: trying to assign a resource that is not in available_resources."
 						if resource not in self.problem_resource_pool[task.task_type]:
 							return None, "ERROR: trying to assign a resource to a task that is not in its resource pool."
-						self.events.append((moment, SimulationEvent(EventType.START_TASK, moment, task, resource)))
-						del self.unassigned_tasks[task.id]
-						self.assigned_tasks[task.id] = (task, resource, moment)
-						if not self.problem.is_event(task.task_type):
-							self.available_resources.remove(resource)
-							self.reserved_resources[resource] = (event.task, moment)
-					self.events.sort()
+					if not self.auto:
+						self.apply_user_selected_assignment(assignments, moment, event)
+					else:
+						decision_point_reached = True
+						self.explore_scenarios(assignments, event)
 			elif event.event_type == EventType.COMPLETE_CASE:
 				self.total_cycle_time += self.now - self.case_start_times[event.task.case_id]
 				self.finalized_cases += 1
@@ -229,3 +256,62 @@ class Simulator:
 						self.finalized_cases += 1
 						unfinished_cases += 1
 		return (self.total_cycle_time / self.finalized_cases, "COMPLETED: you completed " + str(running_time) + " hours of simulated customer cases. " + str(self.finalized_cases) + " cases started. " + str(self.finalized_cases - unfinished_cases) + " cases run to completion.", self.scenario_tree)
+
+	def apply_user_selected_assignment(self, assignments, moment, event):
+		# Displaying task-resource assignments for user selection
+		print("Select which task-resource assignment to apply:")
+		index = 0
+		for (task,resource) in assignments:
+			print(f"[{index}]: T{task.id}_{resource}")
+			index += 1
+
+		# User selection
+		while True:
+			user_input = input("Enter the index of the assignment to apply: ").strip()
+			if user_input.isdigit() and 0 <= int(user_input) < len(assignments):
+				selected_index = int(user_input)
+				task, resource = assignments[selected_index]
+				self.apply_assignment(task, resource, moment, event)
+				break
+			else:
+				print("Invalid index, try again.")
+    
+	def load_parent_state(self, parent_state):
+		self.now = parent_state['now']
+		self.events = parent_state['events']
+		self.unassigned_tasks = parent_state['unassigned_tasks']
+		self.assigned_tasks = parent_state['assigned_tasks']
+		self.available_resources = parent_state['available_resources']
+		self.busy_resources = parent_state['busy_resources']
+		self.reserved_resources = parent_state['reserved_resources']
+		self.busy_cases = parent_state['busy_cases']
+		self.away_resources = parent_state['away_resources']
+		self.away_resources_weights = parent_state['away_resources_weights']
+		self.finalized_cases = parent_state['finalized_cases']
+		self.total_cycle_time = parent_state['total_cycle_time']
+		self.auto = parent_state['auto']
+		self.current_state = parent_state
+    
+	def explore_scenarios(self, assignments, event):
+		parent_state = self.current_state
+		queue = deque([(parent_state, assignment) for assignment in assignments])
+
+		while queue:
+			parent_state, (task, resource) = queue.popleft()
+			self.load_parent_state(parent_state)
+			self.apply_assignment(task, resource, self.now, event)
+
+        	# Run simulation until the next decision point and get new assignments
+		
+
+			# For each new assignment, save the current state and add it to the queue
+
+
+	def apply_assignment(self, task, resource, moment, event):
+			self.events.append((moment, SimulationEvent(EventType.START_TASK, moment, task, resource)))
+			del self.unassigned_tasks[task.id]
+			self.assigned_tasks[task.id] = (task, resource, moment)
+			if not self.problem.is_event(task.task_type):
+				self.available_resources.remove(resource)
+				self.reserved_resources[resource] = (event.task, moment)
+			self.events.sort()
