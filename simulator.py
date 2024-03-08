@@ -86,7 +86,7 @@ class Simulator:
 		self.scenario_tree = scenario_tree
 		self.problem_resource_pool = self.problem.resource_pools
 		self.current_state = None
-		self.auto = True
+		self.current_node = self.scenario_tree.root
 		self.init_simulation()
 
 	def init_simulation(self):
@@ -109,9 +109,9 @@ class Simulator:
 			'away_resources_weights': self.away_resources_weights,
 			'finalized_cases': self.finalized_cases,
 			'total_cycle_time': self.total_cycle_time,
-			'auto': self.auto
 		}
 		self.scenario_tree.root.state_id = 'initial_state'
+		self.scenario_tree.current_node = self.scenario_tree.root
 
 	def desired_nr_resources(self):
 		return self.problem.schedule[int(self.now % len(self.problem.schedule))]
@@ -135,24 +135,10 @@ class Simulator:
 		self.finalized_cases = state_to_load['finalized_cases']
 		self.total_cycle_time = state_to_load['total_cycle_time']
 		self.current_state = state_to_load
-		self.auto = state_to_load['auto']
 
-	def run(self, running_time=RUNNING_TIME):
-		# Initial message to the user
-		while True:
-			user_input = input("Write 'auto' if you want the simulation to run automatically for the specified running time or 'stop' to stop at each decision point: ").lower()
-			if user_input == 'auto':
-				self.auto = True
-				break
-			elif user_input == 'stop':
-				self.auto = False
-				break
-			else:
-				print("Incorrect answer, try again:")
-		# Decision Point flag when the simulation is running in 'auto' mode to stop the simulation and load the parent state
-		decision_point_reached = False
+	def run(self, running_time=RUNNING_TIME, auto=True, stop_at_plan_tasks=False):
     
-		while not decision_point_reached and self.now <= running_time:
+		while self.now <= running_time:
 			event = self.events.pop(0)
 			self.now = event[0]
 			event = event[1]
@@ -221,24 +207,29 @@ class Simulator:
 				self.events.sort()
 			elif event.event_type == EventType.PLAN_TASKS:
 				if len(self.unassigned_tasks) > 0 and len(self.available_resources) > 0:
-					assignments = self.planner.plan(self.scenario_tree, self.available_resources.copy(), list(self.unassigned_tasks.values()), self.problem_resource_pool)
-					moment = self.now
-					print ('Assignments:', assignments)
-					print('Unassigned tasks:', self.unassigned_tasks)
-					for (task,resource) in assignments:
-						print('Task: T', task.id)
-						print('Resource:', resource)
-						if task not in self.unassigned_tasks.values():
-							return None, "ERROR: trying to assign a task that is not in the unassigned_tasks."
-						if resource not in self.available_resources:
-							return None, "ERROR: trying to assign a resource that is not in available_resources."
-						if resource not in self.problem_resource_pool[task.task_type]:
-							return None, "ERROR: trying to assign a resource to a task that is not in its resource pool."
-					if not self.auto:
-						self.apply_user_selected_assignment(assignments, moment, event)
+					if stop_at_plan_tasks:
+						self.events.insert(0, (self.now, event))
+						break
 					else:
-						decision_point_reached = True
-						self.explore_scenarios(assignments, event)
+					#assignments = self.planner.plan(self.scenario_tree, self.available_resources.copy(), list(self.unassigned_tasks.values()), self.problem_resource_pool)
+						assignments = self.planner.plan_selected(self.available_resources.copy(), list(self.unassigned_tasks.values()), self.problem_resource_pool)
+						moment = self.now
+						print ('Assignments:', assignments)
+						print('Unassigned tasks:', self.unassigned_tasks)
+						for (task,resource) in assignments:
+							if task not in self.unassigned_tasks.values():
+								return None, "ERROR: trying to assign a task that is not in the unassigned_tasks."
+							if resource not in self.available_resources:
+								return None, "ERROR: trying to assign a resource that is not in available_resources."
+							if resource not in self.problem_resource_pool[task.task_type]:
+								return None, "ERROR: trying to assign a resource to a task that is not in its resource pool."
+						if not auto:
+							#print(assignments)
+							if len(assignments) > 0:
+								self.apply_user_selected_assignment(assignments, moment, event)
+						else:
+							self.handle_plan_tasks_event(event)
+					
 			elif event.event_type == EventType.COMPLETE_CASE:
 				self.total_cycle_time += self.now - self.case_start_times[event.task.case_id]
 				self.finalized_cases += 1
@@ -270,7 +261,7 @@ class Simulator:
 			user_input = input("Enter the index of the assignment to apply: ").strip()
 			if user_input.isdigit() and 0 <= int(user_input) < len(assignments):
 				selected_index = int(user_input)
-				task, resource = assignments[selected_index]
+				task,resource = assignments[selected_index]
 				self.apply_assignment(task, resource, moment, event)
 				break
 			else:
@@ -289,29 +280,55 @@ class Simulator:
 		self.away_resources_weights = parent_state['away_resources_weights']
 		self.finalized_cases = parent_state['finalized_cases']
 		self.total_cycle_time = parent_state['total_cycle_time']
-		self.auto = parent_state['auto']
 		self.current_state = parent_state
-    
-	def explore_scenarios(self, assignments, event):
-		parent_state = self.current_state
-		queue = deque([(parent_state, assignment) for assignment in assignments])
-
-		while queue:
-			parent_state, (task, resource) = queue.popleft()
-			self.load_parent_state(parent_state)
-			self.apply_assignment(task, resource, self.now, event)
-
-        	# Run simulation until the next decision point and get new assignments
-		
-
-			# For each new assignment, save the current state and add it to the queue
-
+  
+	def save_current_state(self):
+		self.current_state = {
+			'now': self.now,
+			'events': self.events,
+			'unassigned_tasks': self.unassigned_tasks,
+			'assigned_tasks': self.assigned_tasks,
+			'available_resources': self.available_resources,
+			'busy_resources': self.busy_resources,
+			'reserved_resources': self.reserved_resources,
+			'busy_cases': self.busy_cases,
+            'away_resources': self.away_resources,
+            'away_resources_weights': self.away_resources_weights,
+            'finalized_cases': self.finalized_cases,
+            'total_cycle_time': self.total_cycle_time
+		}
+		return self.current_state
 
 	def apply_assignment(self, task, resource, moment, event):
-			self.events.append((moment, SimulationEvent(EventType.START_TASK, moment, task, resource)))
-			del self.unassigned_tasks[task.id]
+			if task.id in self.unassigned_tasks:
+				del self.unassigned_tasks[task.id]
+			else:
+				print("ERROR: trying to assign a task that is not in the unassigned_tasks.")
 			self.assigned_tasks[task.id] = (task, resource, moment)
 			if not self.problem.is_event(task.task_type):
 				self.available_resources.remove(resource)
 				self.reserved_resources[resource] = (event.task, moment)
+			assignment = (task, resource)
+			child_node = self.scenario_tree.generate_child_node(self.scenario_tree.current_node, assignment, self.available_resources.copy(), self.now)
+			self.scenario_tree.current_node = child_node
+			self.current_node = child_node
 			self.events.sort()
+   
+	def handle_plan_tasks_event(self, event):
+		assignments = self.planner.plan_selected(self.available_resources, list(self.unassigned_tasks.values()), self.problem_resource_pool)
+
+		# Save the current state and node for backtracking
+		parent_state = self.save_current_state()
+		parent_node = self.current_node
+
+		for (task, resource) in assignments:
+			# Apply the task-resource assignment, which also updates the current_node
+			self.apply_assignment(task, resource, self.now, event)
+
+			# Continue the simulation from this new state until the next PLAN_TASKS event
+			self.run(auto=True, stop_at_plan_tasks=True)
+
+			# Backtrack to the previous state and node to explore other branches
+			self.load_parent_state(parent_state)
+			self.current_node = parent_node
+			self.scenario_tree.current_node = parent_node

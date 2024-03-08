@@ -23,27 +23,24 @@ class ScenarioNode:
 
 
 class ScenarioTree:
-    def __init__(self, sim_state = None, max_depth=2):
+    def __init__(self, sim_state = None, max_depth=2, current_node=None):
         self.root = ScenarioNode()
         self.sim_state = sim_state
         self.max_depth = max_depth
+        self.current_node = current_node
 
 
-    def generate_tree(self, root, unassigned_tasks, resource_pool, max_depth=2):
-        #print("Generating tree with root node")
-        #print("Root Available Resources:", root.available_resources)
-       #print("Root Assigned Tasks:", root.assigned_tasks)
+    '''def generate_tree(self, root, unassigned_tasks, resource_pool, max_depth=2):
+        
         queue = deque([(root, unassigned_tasks, 0)])  # Queue contains tuples of (node, remaining_tasks, depth)
 
         while queue:
             current_node, tasks, depth = queue.popleft()
 
             if depth >= max_depth or not tasks:
-                #print('assigned_tasks after:', root.assigned_tasks)
                 continue
 
             # Generate all possible child nodes for the current node
-            #print(f"Processing node at depth {depth} with tasks:", tasks)
             for task in tasks:
                 for resource in current_node.available_resources:
                     if resource in resource_pool[task.task_type]:
@@ -54,9 +51,6 @@ class ScenarioTree:
                         available_resources.remove(resource)
                         child_id = ', '.join([f'T{t.id}-R{r}-TS:{self.sim_state.simulator.now}' for t, r in assigned_tasks]) if assigned_tasks else 'None'
                         child_node = ScenarioNode(assigned_tasks, available_resources, current_node, child_id, self.sim_state.simulator.now)
-                        root.assigned_tasks.append((task, resource))
-                        #print(f"Assigning Task {task.id} to Resource {resource}")
-                        #print(f"Created Child Node ID: {child_id}")
                         current_node.add_child(child_node)
                         #self.sim_state.save_simulation_state(f'{child_id}.pickle')
 
@@ -65,58 +59,82 @@ class ScenarioTree:
                         remaining_tasks.remove(task)
 
                         # Add the child node to the queue with its remaining tasks and increased depth
-                        #print(f"Adding Child Node to Queue - ID: {child_id}, Remaining Tasks:", remaining_tasks)
-                        queue.append((child_node, remaining_tasks, depth + 1))
+                        queue.append((child_node, remaining_tasks, depth + 1))'''
+                        
+    
+    def generate_child_node(self, current_node, assignment, available_resources, timestamp):
+        # Create a copy of the current node's assigned tasks and add the new assignment
+        new_assigned_tasks = current_node.assigned_tasks.copy()
+        task, resource = assignment
+        new_assigned_tasks.append((task, resource))
+
+        # Update available resources and unassigned tasks based on the assignment
+        new_available_resources = set(available_resources)
+        #new_available_resources.remove(assignment[1])  # Remove the assigned resource
+        '''if assignment[1] in new_available_resources:
+            new_available_resources.remove(assignment[1])  # Safely remove the assigned resource
+        else:
+            print(f"Trying to remove a resource that's not available: {assignment[1]}")
+            print(f"Current available resources: {new_available_resources}")'''
+
+        # Create the new child node
+        child_node = ScenarioNode(
+            new_assigned_tasks,
+            new_available_resources,
+            current_node,
+            ', '.join(f'T{task.id}-R{resource}-TS:{timestamp}') if assignment else 'None',
+            timestamp
+        )
+
+        # Add the new child node to the current node
+        current_node.add_child(child_node)
+
+        return child_node
 
 
 
 class MyPlanner:
-    def plan(self, scenario_tree, available_resources, unassigned_tasks, resource_pool):
-        #print("Starting plan() method")
-        #print("Unassigned Tasks:", unassigned_tasks)
+    '''def plan(self, scenario_tree, available_resources, unassigned_tasks, resource_pool):
         scenario_tree.root.available_resources = available_resources
         
         # Generate the scenario tree
         scenario_tree.generate_tree(scenario_tree.root, unassigned_tasks, resource_pool, scenario_tree.max_depth)
-        #print('Children of root:', scenario_tree.root.children)
+        assignments = []
         
         if scenario_tree.root.children:
-            return scenario_tree.root.assigned_tasks
-        
-        return []
+            for child in scenario_tree.root.children:
+                if child.assigned_tasks:
+                    assignments.extend(child.assigned_tasks)
+            return assignments
+        else:        
+            return []'''
 
 
     def report(self, event):
         print(event)
+
         
-       
-        
-def remove_duplicates(root):
-    if not root or not root.children:
-        return
+    def plan_selected(self, available_resources, unassigned_tasks, resource_pool):
+        valid_assignments = []
 
-    queue = deque([(root, 0)])  # Queue contains tuples of (node, depth)
-    current_depth_nodes = []  # To store nodes at the current depth
-    last_depth = 0
+        # Iterate through each task
+        for task in unassigned_tasks:
+            task_valid_assignments = []
 
-    while queue:
-        node, depth = queue.popleft()
+            # Check each available resource for suitability
+            for resource in available_resources:
+                if resource in resource_pool[task.task_type]:
+                    # If valid, add the task-resource pair to the task-specific list
+                    task_valid_assignments.append((task, resource))
 
-        # Process nodes at the same depth
-        if depth == last_depth:
-            current_depth_nodes.append(node)
-        else:
-            # Process the previous depth nodes before moving to the next depth
-            process_depth_nodes(current_depth_nodes)
-            current_depth_nodes = [node]
-            last_depth = depth
+            # If there are valid assignments for this task, add them to the overall list
+            if task_valid_assignments:
+                valid_assignments.extend(task_valid_assignments)
 
-        # Add child nodes to the queue
-        for child in node.children:
-            queue.append((child, depth + 1))
+        # At this point, valid_assignments is a list of lists, where each sublist contains
+        # all valid assignments for a specific task
 
-    # Process the last set of nodes
-    process_depth_nodes(current_depth_nodes)
+        return valid_assignments
     
     
 
@@ -149,29 +167,6 @@ def visualize_scenario_tree(root):
     add_nodes_edges(root)
 
     return dot
-
-
-
-def process_depth_nodes(nodes):
-    if not nodes:
-        return
-
-    # Group nodes by their task-resource assignments
-    assignment_groups = defaultdict(list)
-    for node in nodes:
-        key = ', '.join([f'T{t.id}-R{r}' for t, r in node.assigned_tasks])
-        assignment_groups[key].append(node)
-
-    # For each group, keep the node with the most children and remove the others
-    for key, group_nodes in assignment_groups.items():
-        if len(group_nodes) > 1:
-            # Find the node with the most children
-            max_children_node = heapq.nlargest(1, group_nodes, key=lambda n: len(n.children))[0]
-            # Remove all other nodes from their parent's children list
-            for node in group_nodes:
-                if node is not max_children_node:
-                    if node.parent:
-                        node.parent.children.remove(node)
 
 
 
@@ -232,17 +227,27 @@ class SimState:
 
 my_planner = MyPlanner()
 scenario_tree = ScenarioTree(max_depth=3)
-simulator = Simulator(my_planner, scenario_tree, "BPI Challenge 2017 - instance.pickle")
+simulator = Simulator(my_planner, scenario_tree, "BPI Challenge 2017 - instance 2.pickle")
 sim_state = SimState(simulator)
 scenario_tree.sim_state = sim_state
-#avg_cycle_time, completion_msg, scenario_tree = simulator.run(5)
-#remove_duplicates(scenario_tree.root)
+# Initial message to the user
+while True:
+    user_input = input("Write 'auto' if you want the simulation to run automatically for the specified running time or 'stop' to stop at each decision point: ").lower()
+    if user_input == 'auto':
+        avg_cycle_time, completion_msg, scenario_tree = simulator.run(5, auto=True)
+        break
+    elif user_input == 'stop':
+        avg_cycle_time, completion_msg, scenario_tree = simulator.run(5, auto=False)
+        break
+    else:
+        print("Incorrect answer, try again:")
+  
+
 
 # Visualize the complete scenario tree
-#dot = visualize_scenario_tree(scenario_tree.root)
-#dot.render('scenario_tree', view=True, format='pdf')
+dot = visualize_scenario_tree(scenario_tree.root)
+dot.render('scenario_tree', view=True, format='pdf')
 
 # Print the simulation results
-#print(f"Average Cycle Time: {avg_cycle_time}")
-#print(completion_msg)
-print(simulator.run(5))
+print(f"Average Cycle Time: {avg_cycle_time}")
+print(completion_msg)
