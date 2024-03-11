@@ -128,6 +128,7 @@ def explore_simulation(simulator, sim_state, scenario_tree, max_depth=4, bfs=Tru
     state_queue = deque(['Level 1'])
     node_queue = deque([scenario_tree.root])
     
+    # Save the initial state and assignments
     state_id = 'Level 1'
     state, assignments = simulator.run()
     
@@ -137,29 +138,41 @@ def explore_simulation(simulator, sim_state, scenario_tree, max_depth=4, bfs=Tru
         current_state_id = state_queue.popleft()
         current_node = node_queue.popleft()
         current_depth = current_state_id.count('_')
-                
+        
+        # Stop if the maximum depth is reached        
         if current_depth == max_depth:
             state_queue.appendleft(current_state_id)
             return
+        
         else:
+            # Load the current simulation state and assignments
             assignments, moment = sim_state.load_simulation_state(current_state_id)
                             
             for index, (task,resource) in enumerate(assignments):
+                # Load the parent simulation state
                 sim_state.load_simulation_state(current_state_id)
-                        
+                
+                # Construct new state IDs for children and for studying        
                 child_state_id = current_state_id + '_' + f'{index+1}'
                 state_to_study = current_state_id + '_' + f'child{index+1}'
-                        
+                
+                # Run the simulation for the current assignment        
                 new_state, new_assignments = simulator.run(task, resource)
+                
+                # Save the new state and assignments
                 sim_state.save_simulation_state(new_state, new_assignments, child_state_id)
-                        
+                
+                # Create a new child node and add it to the current node        
                 child_node = ScenarioNode(task, resource, current_node, state_to_study, moment)
                 current_node.add_child(child_node)
                 
+                # Add the new state ID and node to the queues
                 if bfs:
+                    # Use append for BFS
                     state_queue.append(child_state_id)
                     node_queue.append(child_node)
                 else:
+                    # Use appendleft for DFS
                     state_queue.appendleft(child_state_id)
                     node_queue.appendleft(child_node)
 
