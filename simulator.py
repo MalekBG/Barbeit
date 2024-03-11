@@ -119,9 +119,10 @@ class Simulator:
 		if task is not None and resource is not None:
 			moment = self.now
 			event = SimulationEvent(EventType.START_TASK, moment, task, resource)
-			print("task: ", task)
-			print("resource: ", resource)
-			print("Unassigned tasks run: ", self.unassigned_tasks)
+			#print("task: ", task)
+			#print("resource: ", resource)
+			#print("Unassigned tasks run: ", self.unassigned_tasks)
+			#print("Applying task ", + task.id, " to resource ", resource)
 			self.apply_assignment(task, resource, self.now, event)
 		while True:
 			event = self.events.pop(0)
@@ -130,15 +131,15 @@ class Simulator:
 			if event.event_type == EventType.CASE_ARRIVAL:
 				self.unassigned_tasks[event.task.id] = event.task
 				self.case_start_times[event.task.case_id] = self.now
-				self.planner.report(Event(event.task.case_id, None, self.now, None, EventType.CASE_ARRIVAL))
-				self.planner.report(Event(event.task.case_id, event.task, self.now, None, EventType.TASK_ACTIVATE))
+				#self.planner.report(Event(event.task.case_id, None, self.now, None, EventType.CASE_ARRIVAL))
+				#self.planner.report(Event(event.task.case_id, event.task, self.now, None, EventType.TASK_ACTIVATE))
 				self.busy_cases[event.task.case_id] = [event.task.id]
 				self.events.append((self.now, SimulationEvent(EventType.PLAN_TASKS, self.now, None, nr_tasks=len(self.unassigned_tasks), nr_resources=len(self.available_resources))))
 				(t, task) = self.problem.next_case()
 				self.events.append((t, SimulationEvent(EventType.CASE_ARRIVAL, t, task)))
 				self.events.sort()
 			elif event.event_type == EventType.START_TASK:
-				self.planner.report(Event(event.task.case_id, event.task, self.now, event.resource, EventType.START_TASK))
+				#self.planner.report(Event(event.task.case_id, event.task, self.now, event.resource, EventType.START_TASK))
 				t = self.now + self.problem.processing_time_sample(event.resource, event.task)
 				self.events.append((t, SimulationEvent(EventType.COMPLETE_TASK, t, event.task, event.resource)))
 				self.events.sort()
@@ -146,7 +147,7 @@ class Simulator:
 					del self.reserved_resources[event.resource]
 					self.busy_resources[event.resource] = (event.task, self.now)
 			elif event.event_type == EventType.COMPLETE_TASK:
-				self.planner.report(Event(event.task.case_id, event.task, self.now, event.resource, EventType.COMPLETE_TASK))
+				#self.planner.report(Event(event.task.case_id, event.task, self.now, event.resource, EventType.COMPLETE_TASK))
 				if not self.problem.is_event(event.task.task_type):  # for actual tasks (not events)
 					del self.busy_resources[event.resource]
 					if self.working_nr_resources() <= self.desired_nr_resources():
@@ -160,10 +161,10 @@ class Simulator:
 				next_tasks = self.problem.complete_task(event.task)
 				for next_task in next_tasks:
 					self.unassigned_tasks[next_task.id] = next_task
-					self.planner.report(Event(event.task.case_id, next_task, self.now, None, EventType.TASK_ACTIVATE))
+					#self.planner.report(Event(event.task.case_id, next_task, self.now, None, EventType.TASK_ACTIVATE))
 					self.busy_cases[event.task.case_id].append(next_task.id)
 				if len(self.busy_cases[event.task.case_id]) == 0:
-					self.planner.report(Event(event.task.case_id, None, self.now, None, EventType.COMPLETE_CASE))
+					#self.planner.report(Event(event.task.case_id, None, self.now, None, EventType.COMPLETE_CASE))
 					self.events.append((self.now, SimulationEvent(EventType.COMPLETE_CASE, self.now, event.task)))
 				self.events.append((self.now, SimulationEvent(EventType.PLAN_TASKS, self.now, None, nr_tasks=len(self.unassigned_tasks), nr_resources=len(self.available_resources))))
 				self.events.sort()
