@@ -35,8 +35,12 @@ class ScenarioTree:
             node_id = f'node{node_counter[0]}'
             node_counter[0] += 1
 
-            # Label for the node: use timestamp, default to "Root" for the root node
-            node_label = str(node.timestamp) if node.timestamp is not None else "Root"
+            # Special label for the root node
+            if not node.parent:
+                node_label = "Root"
+            else:
+                # Label for non-root nodes: shows ID and timestamp
+                node_label = f"ID:{node.state_id}, T:{node.timestamp}"
 
             # Add the current node to the graph
             dot.node(node_id, label=node_label)
@@ -92,15 +96,12 @@ class SimState:
         self.table = {}
         self.save_simulation_state(simulator.current_state, simulator.assigned_tasks, 'initial_state')
         
-        
     def save_simulation_state(self, state, assignments, name):
             state_copy = copy.deepcopy(state)
             assignments_copy = copy.deepcopy(assignments)
             #print("State saved: " + name +  " with unassigned_tasks: ", state_copy['unassigned_tasks'])
             self.table[name] = (state_copy, assignments_copy)
-
-            
-            
+         
     def load_simulation_state(self, state_id):
        #print("current table: ", self.table[state_id]) 
        state_to_load , assignments_to_load = copy.deepcopy(self.table[state_id])
@@ -123,59 +124,53 @@ class SimState:
 
 
 def explore_simulation(simulator, sim_state, scenario_tree, max_depth=4, bfs=True):
-    current_node = scenario_tree.root
+    # Initialize queues for state IDs and corresponding scenario tree nodes
+    state_queue = deque(['Level 1'])
+    node_queue = deque([scenario_tree.root])
+    
+    state_id = 'Level 1'
     state, assignments = simulator.run()
-    state_id = 'State 1'
-    state_queue = deque()
-    state_queue.append(state_id)
-    node_queue = deque()
-    node_queue.append(current_node)
+    
     sim_state.save_simulation_state(state, assignments, state_id)
-    if bfs:
-            while state_queue:
-                new_state_id = state_queue.popleft()
-                current_node = node_queue.popleft()
-                assignments, moment = sim_state.load_simulation_state(new_state_id)
-                if new_state_id.count('_') == max_depth:
-                    state_queue.appendleft(new_state_id)
-                    return
-                else:
-                    index = 0
-                    for assignment in assignments:
-                        state_queue.append(new_state_id + '_' + f'{index+1}')
-                        index += 1
-                    #print("State queue: ", state_queue)
-                    index = 0
+    
+    while state_queue:
+        current_state_id = state_queue.popleft()
+        current_node = node_queue.popleft()
+        current_depth = current_state_id.count('_')
+                
+        if current_depth == max_depth:
+            state_queue.appendleft(current_state_id)
+            return
+        else:
+            assignments, moment = sim_state.load_simulation_state(current_state_id)
                             
-                    for (task,resource) in assignments:
-                        sim_state.load_simulation_state(new_state_id)
-                        state_child = new_state_id + '_' + f'{index+1}'
-                        state_to_study = new_state_id + '_' + f'child{index+1}'
-                        child_node = ScenarioNode(task, resource, current_node, state_to_study, moment)
-                        current_node.add_child(child_node)
-                        node_queue.append(child_node)
-                        #print("Current state to study: ", state_to_study)
-                        new_state, new_assignments = simulator.run(task, resource)
-                        sim_state.save_simulation_state(new_state, new_assignments, state_child)
-                        index += 1
-
-
-
-
-
+            for index, (task,resource) in enumerate(assignments):
+                sim_state.load_simulation_state(current_state_id)
+                        
+                child_state_id = current_state_id + '_' + f'{index+1}'
+                state_to_study = current_state_id + '_' + f'child{index+1}'
+                        
+                new_state, new_assignments = simulator.run(task, resource)
+                sim_state.save_simulation_state(new_state, new_assignments, child_state_id)
+                        
+                child_node = ScenarioNode(task, resource, current_node, state_to_study, moment)
+                current_node.add_child(child_node)
+                
+                if bfs:
+                    state_queue.append(child_state_id)
+                    node_queue.append(child_node)
+                else:
+                    state_queue.appendleft(child_state_id)
+                    node_queue.appendleft(child_node)
 
 
 
 
 my_planner = MyPlanner()
 scenario_tree = ScenarioTree()
-simulator = Simulator(my_planner, "BPI Challenge 2017 - instance.pickle")
+simulator = Simulator(my_planner, "BPI Challenge 2017 - instance 2.pickle")
 sim_state = SimState(simulator)
-explore_simulation(simulator, sim_state, scenario_tree, 4, bfs=True)
-
-
-# Print the simulation results  
-#avg_cycle_time, completion_msg = simulator.get_simulator_stats()
+explore_simulation(simulator, sim_state, scenario_tree, 4, bfs=False)
 
 # Visualize the complete scenario tree
 dot = scenario_tree.visualize_scenario_tree(scenario_tree.root)
