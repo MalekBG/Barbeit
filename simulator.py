@@ -3,7 +3,6 @@ from enum import Enum, auto
 from datetime import datetime, timedelta
 import random
 from problems import MinedProblem
-import pickle
 
 RUNNING_TIME = 24 * 365
 

@@ -1,7 +1,12 @@
 import copy
-from simulator import EventType, SimulationEvent, Simulator
+import os
+from simulator import Simulator
 from graphviz import Digraph
-from collections import defaultdict, deque
+from collections import deque
+import threading
+import time
+import matplotlib.pyplot as plt
+import psutil
 
 
 
@@ -96,30 +101,16 @@ class SimState:
         self.table = {}
         self.save_simulation_state(simulator.current_state, simulator.assigned_tasks, 'initial_state')
         
-    def save_simulation_state(self, state, assignments, name):
-            state_copy = copy.deepcopy(state)
-            assignments_copy = copy.deepcopy(assignments)
-            #print("State saved: " + name +  " with unassigned_tasks: ", state_copy['unassigned_tasks'])
-            self.table[name] = (state_copy, assignments_copy)
+    def save_simulation_state(self, state, assignments, state_id):
+            self.table[state_id] = (state, assignments)
          
     def load_simulation_state(self, state_id):
        #print("current table: ", self.table[state_id]) 
-       state_to_load , assignments_to_load = copy.deepcopy(self.table[state_id])
-       self.simulator.current_state = state_to_load
-       self.simulator.now = state_to_load['now']
-       self.simulator.events = state_to_load['events']
-       self.simulator.unassigned_tasks = state_to_load['unassigned_tasks']
-       self.simulator.assigned_tasks = state_to_load['assigned_tasks']
-       self.simulator.available_resources = state_to_load['available_resources']
-       self.simulator.busy_resources = state_to_load['busy_resources']
-       self.simulator.reserved_resources = state_to_load['reserved_resources']
-       self.simulator.busy_cases = state_to_load['busy_cases']
-       self.simulator.away_resources = state_to_load['away_resources']
-       self.simulator.away_resources_weights = state_to_load['away_resources_weights']
-       self.simulator.finalized_cases = state_to_load['finalized_cases']
-       self.simulator.total_cycle_time = state_to_load['total_cycle_time']
-       #print("State loaded: "+ state_id + " with unassiged_tasks: ", state_to_load['unassigned_tasks']) 
-       return assignments_to_load, state_to_load['now']
+        state_to_load , assignments_to_load = copy.deepcopy(self.table[state_id])
+        self.simulator.current_state = state_to_load
+        for key, value in state_to_load.items():
+            setattr(self.simulator, key, value)
+        return assignments_to_load, state_to_load['now']
 
 
 
@@ -178,12 +169,89 @@ def explore_simulation(simulator, sim_state, scenario_tree, max_depth=4, bfs=Tru
 
 
 
+# Global lists to store usage data
+memory_usage = []
+cpu_usage = []
+timestamps = []
+
+#Monitors CPU and memory usage over time.
+def monitor_resources(interval=0.1):
+    global memory_usage, cpu_usage, timestamps
+    memory_usage.clear()
+    cpu_usage.clear()
+    timestamps.clear()
+    start_time = time.time()
+    while monitoring:
+        memory_usage.append(psutil.Process().memory_info().rss / (1024 ** 2))  # Convert bytes to MB
+        cpu_usage.append(psutil.cpu_percent())
+        timestamps.append(time.time() - start_time)
+        time.sleep(interval)
+        
+        
+        
+#Plots the CPU and memory usage over time.
+def plot_resources():
+    plt.figure(figsize=(12, 6))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(timestamps, memory_usage, label='Memory Usage (MB)')
+    plt.title('Memory Usage Over Time')
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Memory Usage (MB)')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(timestamps, cpu_usage, label='CPU Usage (%)', color='red')
+    plt.title('CPU Usage Over Time')
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('CPU Usage (%)')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+
+
 
 my_planner = MyPlanner()
 scenario_tree = ScenarioTree()
 simulator = Simulator(my_planner, "BPI Challenge 2017 - instance 2.pickle")
 sim_state = SimState(simulator)
-explore_simulation(simulator, sim_state, scenario_tree, 4, bfs=False)
+
+
+# Flag to control the monitoring thread
+monitoring = True
+
+# Start the monitoring thread
+monitor_thread = threading.Thread(target=monitor_resources, args=(0.01,))
+monitor_thread.start()
+
+explore_simulation(simulator, sim_state, scenario_tree, 5, bfs=True)
+
+# Stop the monitoring thread
+monitoring = False
+monitor_thread.join()
+
+# Debugging prints
+#print(f"Data points collected: {len(memory_usage)}")
+#print(f"Memory usage data: {memory_usage}")
+#print(f"CPU usage data: {cpu_usage}")
+
+
+print("Mean Timestamp: ", sum(timestamps)/len(timestamps))
+print("Max Timestamp: ", max(timestamps))
+print("Mean CPU usage: ", sum(cpu_usage)/len(cpu_usage))
+print("Max CPU usage: ", max(cpu_usage)) 
+print("Mean memory usage: ", sum(memory_usage)/len(memory_usage))
+print("Max memory usage: ", max(memory_usage))
+     
+
+# Plot the resource usage
+#plot_resources()
+
 
 # Visualize the complete scenario tree
 dot = scenario_tree.visualize_scenario_tree(scenario_tree.root)
