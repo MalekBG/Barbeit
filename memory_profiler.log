@@ -1,0 +1,40 @@
+Filename: /Users/malekbenghorbel/Documents/GitHub/Barbeit/scenario.py
+
+Line #    Mem usage    Increment  Occurences   Line Contents
+============================================================
+   173    125.6 MiB    125.6 MiB           1   @profile(stream=open('memory_profiler.log', 'w+'))
+   174                                         def explore_simulation_decoupled(simulator, sim_state, max_depth=4):
+   175                                             # Initialize queue for state IDs and depths
+   176    125.6 MiB      0.0 MiB           1       state_queue = deque([(0, 'Level 1')])
+   177                                         
+   178                                             # Save the initial state and assignments
+   179    125.6 MiB      0.0 MiB           1       state_id = 'Level 1'
+   180    125.7 MiB      0.0 MiB           1       state, assignments = simulator.run()
+   181    125.7 MiB      0.0 MiB           1       sim_state.save_simulation_state(state, assignments, state_id)
+   182                                         
+   183    133.9 MiB      0.0 MiB         811       while state_queue:
+   184    133.9 MiB      0.0 MiB         810           current_depth, current_state_id = state_queue.popleft()
+   185                                         
+   186                                                 # Stop if the maximum depth is reached
+   187    133.9 MiB      0.0 MiB         810           if current_depth == max_depth:
+   188    133.9 MiB      0.0 MiB         544               continue
+   189                                         
+   190                                                 # Load the current simulation state and assignments
+   191    133.9 MiB      0.4 MiB         266           assignments, moment = sim_state.load_simulation_state(current_state_id)
+   192                                         
+   193    133.9 MiB      0.0 MiB        1075           for index, (task, resource) in enumerate(assignments):
+   194    133.9 MiB      0.9 MiB         809               sim_state.load_simulation_state(current_state_id)
+   195                                                     
+   196                                                     # Construct new state IDs for children
+   197    133.9 MiB      0.0 MiB         809               child_state_id = f'{current_state_id}_{index+1}'
+   198                                         
+   199                                                     # Run the simulation for the current assignment
+   200    133.9 MiB      6.9 MiB         809               new_state, new_assignments = simulator.run(task, resource)
+   201                                         
+   202                                                     # Save the new state and assignments
+   203    133.9 MiB      0.0 MiB         809               sim_state.save_simulation_state(new_state, new_assignments, child_state_id)
+   204                                         
+   205                                                     # Add the new state ID and depth to the queue
+   206    133.9 MiB      0.0 MiB         809               state_queue.append((current_depth + 1, child_state_id))
+
+

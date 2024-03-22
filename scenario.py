@@ -7,10 +7,13 @@ import threading
 import time
 import matplotlib.pyplot as plt
 import psutil
-
+import cProfile
+from memory_profiler import profile
 
 
 class ScenarioNode:
+    __slots__ = ['assigned_task', 'assigned_resource', 'children', 'parent', 'state_id', 'timestamp']
+
     def __init__(self, assigned_task=None, assigned_resource=None, parent=None, state_id=None, timestamp=None):
         self.assigned_task = assigned_task if assigned_task is not None else []
         self.assigned_resource = assigned_resource if assigned_resource is not None else []
@@ -18,7 +21,6 @@ class ScenarioNode:
         self.parent = parent
         self.state_id = state_id
         self.timestamp = timestamp
-
 
     def add_child(self, child):
         self.children.append(child)
@@ -63,7 +65,7 @@ class ScenarioTree:
         # Initialize the recursive process starting from the root node
         add_nodes_edges(root)
 
-        return dot      
+        return dot
 
 
 
@@ -99,7 +101,7 @@ class SimState:
     def __init__(self, simulator):
         self.simulator = simulator
         self.table = {}
-        self.save_simulation_state(simulator.current_state, simulator.assigned_tasks, 'initial_state')
+        self.save_simulation_state(simulator.current_state, simulator.assigned_tasks, 'depth 0')
         
     def save_simulation_state(self, state, assignments, state_id):
             self.table[state_id] = (state, assignments)
@@ -168,92 +170,90 @@ def explore_simulation(simulator, sim_state, scenario_tree, max_depth=4, bfs=Tru
                     node_queue.appendleft(child_node)
 
 
+@profile(stream=open('memory_profiler.log', 'w+'))
+def explore_simulation_decoupled(simulator, sim_state, max_depth=4):
+    # Initialize queue for state IDs and depths
+    state_queue = deque([(0, 'Level 1')])
 
-# Global lists to store usage data
-memory_usage = []
-cpu_usage = []
-timestamps = []
+    # Save the initial state and assignments
+    state_id = 'Level 1'
+    state, assignments = simulator.run()
+    sim_state.save_simulation_state(state, assignments, state_id)
 
-#Monitors CPU and memory usage over time.
-def monitor_resources(interval=0.1):
-    global memory_usage, cpu_usage, timestamps
-    memory_usage.clear()
-    cpu_usage.clear()
-    timestamps.clear()
-    start_time = time.time()
-    while monitoring:
-        memory_usage.append(psutil.Process().memory_info().rss / (1024 ** 2))  # Convert bytes to MB
-        cpu_usage.append(psutil.cpu_percent())
-        timestamps.append(time.time() - start_time)
-        time.sleep(interval)
-        
-        
-        
-#Plots the CPU and memory usage over time.
-def plot_resources():
-    plt.figure(figsize=(12, 6))
+    while state_queue:
+        current_depth, current_state_id = state_queue.popleft()
 
-    plt.subplot(1, 2, 1)
-    plt.plot(timestamps, memory_usage, label='Memory Usage (MB)')
-    plt.title('Memory Usage Over Time')
-    plt.xlabel('Time (seconds)')
-    plt.ylabel('Memory Usage (MB)')
-    plt.legend()
+        # Stop if the maximum depth is reached
+        if current_depth == max_depth:
+            continue
 
-    plt.subplot(1, 2, 2)
-    plt.plot(timestamps, cpu_usage, label='CPU Usage (%)', color='red')
-    plt.title('CPU Usage Over Time')
-    plt.xlabel('Time (seconds)')
-    plt.ylabel('CPU Usage (%)')
-    plt.legend()
+        # Load the current simulation state and assignments
+        assignments, moment = sim_state.load_simulation_state(current_state_id)
 
-    plt.tight_layout()
-    plt.show()
+        for index, (task, resource) in enumerate(assignments):
+            sim_state.load_simulation_state(current_state_id)
+            
+            # Construct new state IDs for children
+            child_state_id = f'{current_state_id}_{index+1}'
+
+            # Run the simulation for the current assignment
+            new_state, new_assignments = simulator.run(task, resource)
+
+            # Save the new state and assignments
+            sim_state.save_simulation_state(new_state, new_assignments, child_state_id)
+
+            # Add the new state ID and depth to the queue
+            state_queue.append((current_depth + 1, child_state_id))
 
 
 
+def build_scenario_tree_decoupled(sim_state, scenario_tree, bfs=True):
+    # Initialize queues for state IDs, corresponding scenario tree nodes, and depths
+    state_queue = deque([(0, 'Level 1')])
+    node_queue = deque([scenario_tree.root])
+
+    while state_queue:
+        current_depth, current_state_id = state_queue.popleft()
+        current_node = node_queue.popleft()
+
+        # Load the simulation state and assignments for the current node
+        assignments, moment = sim_state.load_simulation_state(current_state_id)
+
+        for index, (task, resource) in enumerate(assignments):
+            # Construct state ID for child nodes
+            child_state_id = f'{current_state_id}_{index+1}'
+
+            # Check if child state exists in sim_state, continue if not
+            if child_state_id not in sim_state.table:
+                continue
+
+            # Create a new child node
+            child_node = ScenarioNode(task, resource, current_node, child_state_id, moment)
+            current_node.add_child(child_node)
+
+            # Add the new state ID, node, and depth to the queues
+            if bfs:
+                state_queue.append((current_depth + 1, child_state_id))
+                node_queue.append(child_node)
+            else:
+                state_queue.appendleft((current_depth + 1, child_state_id))
+                node_queue.appendleft(child_node)
 
 
 
+start_time = time.time()
 
 my_planner = MyPlanner()
-scenario_tree = ScenarioTree()
 simulator = Simulator(my_planner, "BPI Challenge 2017 - instance 2.pickle")
 sim_state = SimState(simulator)
+explore_simulation_decoupled(simulator, sim_state, 5)
 
+end_time = time.time()
+print(f'Time taken: {end_time - start_time} seconds')
 
-# Flag to control the monitoring thread
-monitoring = True
-
-# Start the monitoring thread
-monitor_thread = threading.Thread(target=monitor_resources, args=(0.01,))
-monitor_thread.start()
-
-explore_simulation(simulator, sim_state, scenario_tree, 5, bfs=True)
-
-# Stop the monitoring thread
-monitoring = False
-monitor_thread.join()
-
-# Debugging prints
-#print(f"Data points collected: {len(memory_usage)}")
-#print(f"Memory usage data: {memory_usage}")
-#print(f"CPU usage data: {cpu_usage}")
-
-
-print("Mean Timestamp: ", sum(timestamps)/len(timestamps))
-print("Max Timestamp: ", max(timestamps))
-print("Mean CPU usage: ", sum(cpu_usage)/len(cpu_usage))
-print("Max CPU usage: ", max(cpu_usage)) 
-print("Mean memory usage: ", sum(memory_usage)/len(memory_usage))
-print("Max memory usage: ", max(memory_usage))
-     
-
-# Plot the resource usage
-#plot_resources()
-
+scenario_tree= ScenarioTree()
+build_scenario_tree_decoupled(sim_state, scenario_tree, True)
 
 # Visualize the complete scenario tree
 dot = scenario_tree.visualize_scenario_tree(scenario_tree.root)
 dot.render('scenario_tree', view=True, format='pdf')
-
