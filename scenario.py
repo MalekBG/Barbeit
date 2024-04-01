@@ -1,5 +1,5 @@
 import copy
-import os
+import pandas as pd
 from simulator import Simulator
 from graphviz import Digraph
 from collections import deque
@@ -7,7 +7,6 @@ import threading
 import time
 import matplotlib.pyplot as plt
 import psutil
-import cProfile
 from memory_profiler import profile
 
 
@@ -116,62 +115,8 @@ class SimState:
 
 
 
-def explore_simulation(simulator, sim_state, scenario_tree, max_depth=4, bfs=True):
-    # Initialize queues for state IDs and corresponding scenario tree nodes
-    state_queue = deque(['Level 1'])
-    node_queue = deque([scenario_tree.root])
-    
-    # Save the initial state and assignments
-    state_id = 'Level 1'
-    state, assignments = simulator.run()
-    
-    sim_state.save_simulation_state(state, assignments, state_id)
-    
-    while state_queue:
-        current_state_id = state_queue.popleft()
-        current_node = node_queue.popleft()
-        current_depth = current_state_id.count('_')
-        
-        # Stop if the maximum depth is reached        
-        if current_depth == max_depth:
-            state_queue.appendleft(current_state_id)
-            return
-        
-        else:
-            # Load the current simulation state and assignments
-            assignments, moment = sim_state.load_simulation_state(current_state_id)
-                            
-            for index, (task,resource) in enumerate(assignments):
-                # Load the parent simulation state
-                sim_state.load_simulation_state(current_state_id)
-                
-                # Construct new state IDs for children and for studying        
-                child_state_id = current_state_id + '_' + f'{index+1}'
-                state_to_study = current_state_id + '_' + f'child{index+1}'
-                
-                # Run the simulation for the current assignment        
-                new_state, new_assignments = simulator.run(task, resource)
-                
-                # Save the new state and assignments
-                sim_state.save_simulation_state(new_state, new_assignments, child_state_id)
-                
-                # Create a new child node and add it to the current node        
-                child_node = ScenarioNode(task, resource, current_node, state_to_study, moment)
-                current_node.add_child(child_node)
-                
-                # Add the new state ID and node to the queues
-                if bfs:
-                    # Use append for BFS
-                    state_queue.append(child_state_id)
-                    node_queue.append(child_node)
-                else:
-                    # Use appendleft for DFS
-                    state_queue.appendleft(child_state_id)
-                    node_queue.appendleft(child_node)
 
-
-@profile(stream=open('memory_profiler.log', 'w+'))
-def explore_simulation_decoupled(simulator, sim_state, max_depth=4):
+def explore_simulation(simulator, sim_state, max_depth=4):
     # Initialize queue for state IDs and depths
     state_queue = deque([(0, 'Level 1')])
 
@@ -188,7 +133,7 @@ def explore_simulation_decoupled(simulator, sim_state, max_depth=4):
             continue
 
         # Load the current simulation state and assignments
-        assignments, moment = sim_state.load_simulation_state(current_state_id)
+        assignments, _ = sim_state.load_simulation_state(current_state_id)
 
         for index, (task, resource) in enumerate(assignments):
             sim_state.load_simulation_state(current_state_id)
@@ -204,10 +149,10 @@ def explore_simulation_decoupled(simulator, sim_state, max_depth=4):
 
             # Add the new state ID and depth to the queue
             state_queue.append((current_depth + 1, child_state_id))
+            
 
 
-
-def build_scenario_tree_decoupled(sim_state, scenario_tree, bfs=True):
+def build_scenario_tree(sim_state, scenario_tree, bfs=True):
     # Initialize queues for state IDs, corresponding scenario tree nodes, and depths
     state_queue = deque([(0, 'Level 1')])
     node_queue = deque([scenario_tree.root])
@@ -238,22 +183,83 @@ def build_scenario_tree_decoupled(sim_state, scenario_tree, bfs=True):
             else:
                 state_queue.appendleft((current_depth + 1, child_state_id))
                 node_queue.appendleft(child_node)
+                
+                
+                
+# Global list to store memory usage data
+#memory_usage = []
+
+# Monitors memory usage over time.
+def monitor_resources(interval=0.1):
+    global memory_usage
+    memory_usage = []
+    start_time = time.time()
+    while monitoring:
+        memory_usage.append(psutil.Process().memory_info().rss / (1024 ** 2))  # Convert bytes to MB
+        time.sleep(interval)
+
+
+# Plots the memory usage over time.
+'''def plot_resources():
+    plt.figure(figsize=(6, 6))
+    plt.plot(timestamps, memory_usage, label='Memory Usage (MB)')
+    plt.title('Memory Usage Over Time')
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Memory Usage (MB)')
+    plt.legend()
+    plt.show()'''
 
 
 
-start_time = time.time()
+# Initialize lists to store data for each run
+#average_memory_usages = []
+#peak_memory_usages = []
+#execution_times = []
 
-my_planner = MyPlanner()
-simulator = Simulator(my_planner, "BPI Challenge 2017 - instance 2.pickle")
-sim_state = SimState(simulator)
-explore_simulation_decoupled(simulator, sim_state, 5)
+# Run the code snippet 10 times
+for i in range(1):
+    # Reset the monitoring flag and start time
+    #monitoring = True
+    #start_time = time.time()
 
-end_time = time.time()
-print(f'Time taken: {end_time - start_time} seconds')
+    # Start the monitoring thread
+    #monitor_thread = threading.Thread(target=monitor_resources, args=(0.01,))
+    #monitor_thread.start()
+
+    
+    my_planner = MyPlanner()
+    simulator = Simulator(my_planner, "BPI Challenge 2017 - instance 2.pickle")
+    sim_state = SimState(simulator)
+    explore_simulation(simulator, sim_state, 9)
+
+    # Stop the monitoring thread and calculate execution time
+    #monitoring = False
+    #monitor_thread.join()
+    #end_time = time.time()
+
+    # Calculate and store the required data
+    #average_memory_usages.append(sum(memory_usage) / len(memory_usage))
+    #peak_memory_usages.append(max(memory_usage))
+    #execution_times.append(end_time - start_time)
+
+# Create a DataFrame to store the collected data
+#df = pd.DataFrame({
+    #'Average Memory Usage (MB)': average_memory_usages,
+    #'Peak Memory Usage (MB)': peak_memory_usages,
+    #'Execution Time (s)': execution_times
+#})
+
+# Save the DataFrame to an Excel file
+#df.to_excel('performance_data.xlsx', index=False)
+     
+     
+#Plot the resource usage
+#plot_resources()
+
 
 scenario_tree= ScenarioTree()
-build_scenario_tree_decoupled(sim_state, scenario_tree, True)
+build_scenario_tree(sim_state, scenario_tree, True)
 
 # Visualize the complete scenario tree
 dot = scenario_tree.visualize_scenario_tree(scenario_tree.root)
-dot.render('scenario_tree', view=True, format='pdf')
+dot.render('scenario_tree', view=True, format='png')

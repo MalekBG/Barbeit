@@ -1,61 +1,35 @@
+import pandas as pd
 import matplotlib.pyplot as plt
-from openpyxl import load_workbook
 
-# Load the workbook and select the first sheet
-workbook = load_workbook(filename='Performance.xlsx', data_only=True)
-first_sheet = workbook.worksheets[0]
+# Load the data from the Excel file
+file_path = 'plot info.xlsx'  # Make sure to update this path to your actual file location
+data = pd.read_excel(file_path, sheet_name=0)  # Assuming the data is in the first sheet
 
-# Data extraction from Excel sheet
-data = {
-    "No Copy": {"Max Depth": [], "RAM Average": [], "RAM Max": [], "CPU Average": [], "CPU Max": []},
-    "Copy": {"Max Depth": [], "RAM Average": [], "RAM Max": [], "CPU Average": [], "CPU Max": []},
-    "Deep Copy": {"Max Depth": [], "RAM Average": [], "RAM Max": [], "CPU Average": [], "CPU Max": []}
-}
+# Extracting max depth values from the first column
+data['Max Depth'] = data['Unnamed: 0'].str.extract('(\d+)').astype(int)
 
-# Start reading data from row 4 onwards
-for row in first_sheet.iter_rows(min_row=4, values_only=True):
-    max_depth_str = row[0]
-    if max_depth_str is not None and "max_depth=" in max_depth_str:
-        try:
-            max_depth = int(max_depth_str.split("=")[1])
-            if 4 <= max_depth <= 7:
-                for key, (cpu_avg_col, cpu_max_col, ram_avg_col, ram_max_col) in zip(
-                    data.keys(), [(1, 2, 3, 4), (5, 6, 7, 8), (9, 10, 11, 12)]
-                ):
-                    data[key]["Max Depth"].append(max_depth)
-                    data[key]["CPU Average"].append(row[cpu_avg_col])
-                    data[key]["CPU Max"].append(row[cpu_max_col])
-                    data[key]["RAM Average"].append(row[ram_avg_col])
-                    data[key]["RAM Max"].append(row[ram_max_col])
-        except IndexError:
-            # Handle cases where the row does not have all the expected columns
-            print(f"Row with max_depth={max_depth} is incomplete and will be skipped.")
-            continue
+# Plotting Memory Usage over Max Depth
+plt.figure(figsize=(12, 6))
 
-# Plotting function
-def plot_combined_data(copy_type, data):
-    fig, axs = plt.subplots(1, 2, figsize=(20, 6))  # Create 2 subplots side by side
+# Plot for Average Memory Usage
+plt.plot(data['Max Depth'], data['Average Memory Usage (MB)'], label='Average Memory Usage', marker='o')
 
-    # Plot RAM Consumption
-    axs[0].plot(data[copy_type]["Max Depth"], data[copy_type]["RAM Average"], label='RAM Average', marker='o')
-    axs[0].plot(data[copy_type]["Max Depth"], data[copy_type]["RAM Max"], label='RAM Max', marker='s')
-    axs[0].set_title(f'{copy_type} - RAM Consumption vs Max Depth')
-    axs[0].set_xlabel('Max Depth')
-    axs[0].set_ylabel('RAM Consumption (units)')
-    axs[0].legend()
-    axs[0].grid(True)
+# Plot for Peak Memory Usage
+plt.plot(data['Max Depth'], data['Peak Memory Usage (MB)'], label='Peak Memory Usage', marker='x')
 
-    # Plot CPU Consumption
-    axs[1].plot(data[copy_type]["Max Depth"], data[copy_type]["CPU Average"], label='CPU Average', marker='o')
-    axs[1].plot(data[copy_type]["Max Depth"], data[copy_type]["CPU Max"], label='CPU Max', marker='s')
-    axs[1].set_title(f'{copy_type} - CPU Consumption vs Max Depth')
-    axs[1].set_xlabel('Max Depth')
-    axs[1].set_ylabel('CPU Consumption (units)')
-    axs[1].legend()
-    axs[1].grid(True)
+plt.title('Memory Usage over Max Depth')
+plt.xlabel('Max Depth')
+plt.ylabel('Memory Usage (MB)')
+plt.legend()
+plt.grid(True)
+plt.show()
 
-    plt.show()
-
-# Generate combined plots for each copy type
-for copy_type in data.keys():
-    plot_combined_data(copy_type, data)
+# Plotting Execution Time over Max Depth
+plt.figure(figsize=(12, 6))
+plt.plot(data['Max Depth'], data['Execution Time (s)'], label='Execution Time', color='red', marker='s')
+plt.title('Execution Time over Max Depth')
+plt.xlabel('Max Depth')
+plt.ylabel('Execution Time (s)')
+plt.legend()
+plt.grid(True)
+plt.show()
