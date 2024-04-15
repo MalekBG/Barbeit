@@ -78,6 +78,8 @@ class Simulator:
 		self.now = 0
 		self.finalized_cases = 0
 		self.total_cycle_time = 0
+		self.completed_tasks = 0
+		self.allocated_tasks = []
 		self.case_start_times = dict()
 		self.problem = MinedProblem.from_file(instance_file)
 		self.problem.interarrival_time._alpha *= 4.8
@@ -106,6 +108,8 @@ class Simulator:
 			'away_resources_weights': self.away_resources_weights,
 			'finalized_cases': self.finalized_cases,
 			'total_cycle_time': self.total_cycle_time,
+			'completed_tasks': self.completed_tasks,
+			'allocated_tasks': self.allocated_tasks
 		}
 
 	def desired_nr_resources(self):
@@ -116,13 +120,7 @@ class Simulator:
 
 	def run(self, task=None, resource=None):
 		if task is not None and resource is not None:
-			moment = self.now
-			event = SimulationEvent(EventType.START_TASK, moment, task, resource)
-			#print("task: ", task)
-			#print("resource: ", resource)
-			#print("Unassigned tasks run: ", self.unassigned_tasks)
-			#print("Applying task ", + task.id, " to resource ", resource)
-			self.apply_assignment(task, resource, self.now, event)
+			self.apply_assignment(task, resource)
 		while True:
 			event = self.events.pop(0)
 			self.now = event[0]
@@ -166,6 +164,9 @@ class Simulator:
 					#self.planner.report(Event(event.task.case_id, None, self.now, None, EventType.COMPLETE_CASE))
 					self.events.append((self.now, SimulationEvent(EventType.COMPLETE_CASE, self.now, event.task)))
 				self.events.append((self.now, SimulationEvent(EventType.PLAN_TASKS, self.now, None, nr_tasks=len(self.unassigned_tasks), nr_resources=len(self.available_resources))))
+				self.completed_tasks += 1
+				self.allocated_tasks.append((event.task.id, event.resource))
+				self.allocated_tasks.sort()
 				self.events.sort()
 			elif event.event_type == EventType.SCHEDULE_RESOURCES:
 				if len(self.away_resources) > 0:
@@ -193,7 +194,6 @@ class Simulator:
 			elif event.event_type == EventType.PLAN_TASKS:
 				if len(self.unassigned_tasks) > 0 and len(self.available_resources) > 0:
 					assignments = self.planner.plan(self.available_resources.copy(), list(self.unassigned_tasks.values()), self.problem_resource_pool)
-					moment = self.now
 					for (task, resource) in assignments:
 						if task not in self.unassigned_tasks.values():
 							return None, "ERROR: trying to assign a task that is not in the unassigned_tasks."
@@ -235,12 +235,16 @@ class Simulator:
             'away_resources': self.away_resources,
             'away_resources_weights': self.away_resources_weights,
             'finalized_cases': self.finalized_cases,
-            'total_cycle_time': self.total_cycle_time
+            'total_cycle_time': self.total_cycle_time,
+            'completed_tasks': self.completed_tasks,
+            'allocated_tasks': self.allocated_tasks
 		}
 		return self.current_state
 
-	def apply_assignment(self, task, resource, moment, event):
-		self.events.append((moment, SimulationEvent(EventType.START_TASK, moment, task, resource)))
+	def apply_assignment(self, task, resource):
+		moment=self.now
+		event = SimulationEvent(EventType.START_TASK, moment, task, resource)
+		self.events.append((moment, event))
 		del self.unassigned_tasks[task.id]
 		self.assigned_tasks[task.id] = (task, resource, moment)
 		if not self.problem.is_event(task.task_type):
