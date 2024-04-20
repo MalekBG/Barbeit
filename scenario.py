@@ -271,10 +271,12 @@ def monitor_resources(interval=0.1):
 
 # Initialize lists to store data for each run
 state_numbers = []
+#new_elements = [1369079, 553208, 948191, 1173906, 11, 15229, 234152, 391518, 2056368, 470367, 3823155, 15388, 6045, 702914, 115, 311837, 47, 2213, 13741, 3477, 1712366, 2985, 2, 2302894, 728, 115467, 1635532, 279268, 4220, 47075, 3117049, 2771880, 1993627, 33943, 136, 1682, 16124, 2154906, 972520, 1089315, 12316, 6128, 2255063, 14, 14986, 1933240, 112208, 653, 544247, 5926059]
+#state_numbers.extend(new_elements)
 
 
 # Run the code snippet 10 times
-for i in range(10):
+for i in range(50):
     '''
     # Reset the monitoring flag and start time
     monitoring = True
@@ -293,7 +295,7 @@ for i in range(10):
     #print(find_best_scenario(sim_state))
     state_numbers.append(len(sim_state.table)-1)
     
-    time.sleep(15) # Sleep for 15 seconds between runs
+   # time.sleep(15) # Sleep for 15 seconds between runs
 
 '''
     # Stop the monitoring thread and calculate execution time
@@ -335,3 +337,4 @@ build_scenario_tree(sim_state, scenario_tree, True)
 # Visualize the complete scenario tree
 dot = scenario_tree.visualize_scenario_tree(scenario_tree.root)
 dot.render('scenario_tree', view=True, format='pdf')'''
+ 
