@@ -3,6 +3,12 @@ import pandas as pd
 from simulator import Simulator
 from graphviz import Digraph
 from collections import deque, defaultdict
+import threading
+import time
+import matplotlib.pyplot as plt
+import psutil
+from memory_profiler import profile
+
 
 
 
@@ -85,7 +91,7 @@ class SimState:
     def __init__(self, simulator):
         self.simulator = simulator
         self.table = {}
-        self.leaf_states = []
+        #self.leaf_states = []
         self.save_simulation_state(simulator.current_state, simulator.assigned_tasks, 'depth 0')
         
     def save_simulation_state(self, state, assignments, state_id):
@@ -131,8 +137,8 @@ def explore_simulation(sim_state, max_depth=4):
             # Save the new state and assignments
             sim_state.save_simulation_state(new_state, new_assignments, child_state_id)
             
-            if current_depth == max_depth - 1:
-                sim_state.leaf_states.append(child_state_id)
+            #if current_depth == max_depth - 1:
+                #sim_state.leaf_states.append(child_state_id)
 
             # Add the new state ID and depth to the queue
             state_queue.append((current_depth + 1, child_state_id))
@@ -222,35 +228,9 @@ def explore_simulation_timed(sim_state, goal_timestamp=1):
 
 
 
-def find_best_scenario(sim_state):
-    print(f"Finding the best scenario from {len(sim_state.leaf_states)} generated scenarios.")
-    min_avg = float('inf')  # Initialize min_avg to infinity
-    best_scenario_id = None
-
-    # Scroll through all state IDs in sim_state.leaf_states
-    for state_id in sim_state.leaf_states:
-        sim_state.load_simulation_state(state_id)  # Load the simulation state
-
-        # Calculate the average of completed tasks per hour for the current state
-        current_avg = sim_state.simulator.completed_tasks / sim_state.simulator.now
-
-        # Check if the current average is less than the current min_avg
-        if current_avg < min_avg:
-            min_avg = current_avg  # Update min_avg
-            best_scenario_id = state_id  # Update best_scenario_id
-
-    # Load the best scenario state
-    sim_state.load_simulation_state(best_scenario_id)
-
-    # Return the message with details of the best scenario
-    print(f"Best generated scenario:\n{sim_state.simulator.allocated_tasks}\n" f"{min_avg:.2f} completed tasks per hour.\n"
-            f"{sim_state.simulator.completed_tasks} total completed tasks.\n")
-
-
-
 def explore_and_merge_simulation(sim_state, max_depth=4, distance=1):
     # Initialize queue for state IDs, depths, and completed tasks average
-    state_queue = deque([('Level 1', 0, 0)])  # Starting with the initial state at depth 0
+    state_queue = deque([('Level 1', 0, 0)])
     
     # Save the initial state and assignments
     state_id = 'Level 1'
@@ -288,11 +268,11 @@ def explore_and_merge_simulation(sim_state, max_depth=4, distance=1):
             # Store average for depth level comparison
             depth_averages[current_depth + 1].append((child_state_id, current_avg))
             
-            if current_depth == max_depth - 1:
-                sim_state.leaf_states.append(child_state_id)
+            #if current_depth == max_depth - 1:
+                #sim_state.leaf_states.append(child_state_id)
 
         # Merge states at this depth if their task completion averages are within the specified distance
-        if current_depth >= 2:
+        if current_depth >= 5:
             merge_and_remove_states(depth_averages[current_depth], distance, sim_state)
             
     print(f"Exploration finished with {len(sim_state.table)-1} total states.")    
@@ -326,19 +306,94 @@ def merge_and_remove_states(states_info, distance, sim_state):
 
 
 
+def find_best_scenario(sim_state):
+    print(f"Finding the best scenario from {len(sim_state.leaf_states)} generated scenarios.")
+    min_avg = float('inf')  # Initialize min_avg to infinity
+    best_scenario_id = None
+
+    # Scroll through all state IDs in sim_state.leaf_states
+    for state_id in sim_state.leaf_states:
+        if state_id not in sim_state.table:
+            print(f"State {state_id} not found in the table.")
+            continue
+        sim_state.load_simulation_state(state_id)  # Load the simulation state
+
+        # Calculate the average of completed tasks per hour for the current state
+        current_avg = sim_state.simulator.completed_tasks / sim_state.simulator.now
+
+        # Check if the current average is less than the current min_avg
+        if current_avg < min_avg:
+            min_avg = current_avg  # Update min_avg
+            best_scenario_id = state_id  # Update best_scenario_id
+
+    # Load the best scenario state
+    sim_state.load_simulation_state(best_scenario_id)
+
+    # Return the message with details of the best scenario
+    print(f"Best generated scenario:\n{sim_state.simulator.allocated_tasks}\n" f"{min_avg:.2f} completed tasks per hour.\n"
+            f"{sim_state.simulator.completed_tasks} total completed tasks.\n")
+
+
+
+'''               
+# Global list to store memory usage data
+memory_usage = []
+
+# Monitors memory usage over time.
+def monitor_resources(interval=0.1):
+    global memory_usage
+    memory_usage = []
+    start_time = time.time()
+    while monitoring:
+        memory_usage.append(psutil.Process().memory_info().rss / (1024 ** 2))  # Convert bytes to MB
+        time.sleep(interval)'''
+
+
+
 # Initialize lists to store data for each run
 state_numbers = []
 
-for i in range(50):
 
+# Run the code snippet 10 times
+for i in range(50):
+    '''
+    # Reset the monitoring flag and start time
+    monitoring = True
+    start_time = time.time()
+
+    # Start the monitoring thread
+    monitor_thread = threading.Thread(target=monitor_resources, args=(0.01,))
+    monitor_thread.start()
+'''
+    
     my_planner = MyPlanner()
     simulator = Simulator(my_planner, "BPI Challenge 2017 - instance 2.pickle")
     sim_state = SimState(simulator)
     #explore_simulation_timed(sim_state, goal_timestamp=0.2)
-    #explore_simulation(sim_state, max_depth=5)
-    explore_and_merge_simulation(sim_state, max_depth=5, distance=1)
+    #explore_simulation(sim_state, max_depth=10)
+    explore_and_merge_simulation(sim_state, max_depth=8, distance=0.5)
     #find_best_scenario(sim_state)
     state_numbers.append(len(sim_state.table)-1)
+
+'''
+    # Stop the monitoring thread and calculate execution time
+    monitoring = False
+    monitor_thread.join()
+    end_time = time.time()
+
+    # Calculate and store the required data
+    average_memory_usages.append(sum(memory_usage) / len(memory_usage))
+    peak_memory_usages.append(max(memory_usage))
+    execution_times.append(end_time - start_time)
+
+# Create a DataFrame to store the collected data
+df = pd.DataFrame({
+    'Average Memory Usage (MB)': average_memory_usages,
+    'Peak Memory Usage (MB)': peak_memory_usages,
+    'Execution Time (s)': execution_times
+})'''
+
+
 
 # Calculate averages and peaks from the collected data
 average_state_number = sum(state_numbers) / len(state_numbers)
