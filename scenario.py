@@ -361,7 +361,6 @@ def explore_and_merge_simulation_fct(sim_state, max_depth=4, merge_threshold=0.5
 
     while state_queue:
         current_depth, current_state_id = state_queue.popleft()
-        print(f"Exploring state {current_state_id} at depth {current_depth}")
         depth_states[current_depth].append(current_state_id)
         
         if current_state_id not in sim_state.table:
@@ -375,6 +374,7 @@ def explore_and_merge_simulation_fct(sim_state, max_depth=4, merge_threshold=0.5
         assignments, _ = sim_state.load_simulation_state(current_state_id)
 
         for index, (task, resource) in enumerate(assignments):
+            print(f"Exploring state {current_state_id} at depth {current_depth} with assignment {index+1}")
             sim_state.load_simulation_state(current_state_id)
             
             # Construct new state IDs for children
@@ -406,6 +406,7 @@ def explore_and_merge_simulation_fct(sim_state, max_depth=4, merge_threshold=0.5
                         if state_id1 in to_merge:
                             continue
                         for state_id2 in states_to_compare:
+                            print(f"Comparing states {state_id1} and {state_id2} at depth {current_depth}")
                          # Load and copy the first state
                             sim_state.load_simulation_state(state_id1)
                             state1 = copy.deepcopy(sim_state.simulator.current_state)
@@ -431,7 +432,7 @@ def explore_and_merge_simulation_fct(sim_state, max_depth=4, merge_threshold=0.5
                         if (remove_id in sim_state.table):    
                             del sim_state.table[remove_id]
                             deleted_states += 1
-                        #print(f"Removed state {remove_id} and kept state {keep_id} at depth {current_depth}")
+                        print(f"Removed state {remove_id} and kept state {keep_id} at depth {current_depth}")
                 else:
                     state_queue.appendleft((next_element_depth, next_element_state_id))
                     
@@ -466,6 +467,7 @@ memory_usage = []
 
 # Run the code snippet 50 times
 for i in range(50):
+    print(f"Run {i+1}")
     # Reset the monitoring flag and start time
     monitoring = True
 
