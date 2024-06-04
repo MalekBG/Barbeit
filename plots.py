@@ -12,14 +12,14 @@ data['Max Depth'] = data['Unnamed: 0'].str.extract('(\d+)').astype(int)
 plt.figure(figsize=(12, 6))
 
 # Plot for Average State Number
-plt.plot(data['Max Depth'], data['Average State Number'], label='Average Number of States', marker='o')
+plt.plot(data['Max Depth'], data['Average Memory Usage (in MB)'], label='Average Memory Usage (in MB)', marker='o')
 
 # Plot for Peak State Number
-plt.plot(data['Max Depth'], data['Peak State Number'], label='Peak Number of States', marker='x')
+plt.plot(data['Max Depth'], data['Peak Memory Usage (in MB)'], label='Peak Memory Usage (in MB)', marker='x')
 
-plt.title('Number of States over Max Depth')
+plt.title('Memory Consumption over Max Depth')
 plt.xlabel('Max Depth')
-plt.ylabel('Number of States')
+plt.ylabel('Memory Consumption (in MB)')
 plt.legend()
 plt.grid(True)
 plt.show()

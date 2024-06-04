@@ -80,6 +80,7 @@ class Simulator:
 		self.total_cycle_time = 0
 		self.completed_tasks = 0
 		self.allocated_tasks = []
+		self.average_completed_tasks = 0
 		self.case_start_times = dict()
 		self.problem = MinedProblem.from_file(instance_file)
 		self.problem.interarrival_time._alpha *= 4.8
@@ -109,7 +110,8 @@ class Simulator:
 			'finalized_cases': self.finalized_cases,
 			'total_cycle_time': self.total_cycle_time,
 			'completed_tasks': self.completed_tasks,
-			'allocated_tasks': self.allocated_tasks
+			'allocated_tasks': self.allocated_tasks,
+			'average_completed_tasks': self.average_completed_tasks
 		}
 
 	def desired_nr_resources(self):
@@ -165,6 +167,7 @@ class Simulator:
 					self.events.append((self.now, SimulationEvent(EventType.COMPLETE_CASE, self.now, event.task)))
 				self.events.append((self.now, SimulationEvent(EventType.PLAN_TASKS, self.now, None, nr_tasks=len(self.unassigned_tasks), nr_resources=len(self.available_resources))))
 				self.completed_tasks += 1
+				self.average_completed_tasks = self.completed_tasks / self.now
 				self.allocated_tasks.append((event.task.id, event.resource))
 				self.allocated_tasks.sort()
 				self.events.sort()
@@ -237,7 +240,8 @@ class Simulator:
             'finalized_cases': self.finalized_cases,
             'total_cycle_time': self.total_cycle_time,
             'completed_tasks': self.completed_tasks,
-            'allocated_tasks': self.allocated_tasks
+            'allocated_tasks': self.allocated_tasks,
+            'average_completed_tasks': self.average_completed_tasks
 		}
 		return self.current_state
 
