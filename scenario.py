@@ -261,12 +261,9 @@ def calculate_distance(state1, state2):
     # Helper function to calculate closeness to rush hour
     def closeness_to_rush_hour(timestamp):
         hour = datetime.fromtimestamp(timestamp).hour
-        if hour < rush_hour_start:
-            return rush_hour_start - hour
-        elif hour > rush_hour_end:
-            return hour - rush_hour_end
-        else:
+        if rush_hour_start <= hour <= rush_hour_end:
             return 0  # within rush hours
+        return min(abs(hour - rush_hour_start), abs(hour - rush_hour_end))
 
     # Modified weighted time difference calculation
     closeness1 = state1['now'] / (1 + closeness_to_rush_hour(state1['now']))
@@ -274,71 +271,49 @@ def calculate_distance(state1, state2):
     time_diff = abs(closeness1 - closeness2)
 
     # Event Queue Processing using the first event's timestamp
-    next_event_time1 = state1['events'].pop(0)[0]
-    next_event_time2 = state2['events'].pop(0)[0]
+    next_event_time1 = state1['events'][0][0]
+    next_event_time2 = state2['events'][0][0]
     event_time_diff = abs(next_event_time1 - next_event_time2)
 
-    # Tasks and Resources
-    unassigned_tasks_diff = abs((len(state1['unassigned_tasks']) / max(1, len(state1['unassigned_tasks']) + len(state1['assigned_tasks']))) -
-                                    (len(state2['unassigned_tasks']) / max(1, len(state2['unassigned_tasks']) + len(state2['assigned_tasks']))))
-    
-    assigned_tasks_diff = abs((len(state1['assigned_tasks']) / max(1, len(state1['unassigned_tasks']) + len(state1['assigned_tasks']))) -
-                                    (len(state2['assigned_tasks']) / max(1, len(state2['unassigned_tasks']) + len(state2['assigned_tasks']))))
-    
-    busy_cases_diff = abs((len(state1['busy_cases']) / max(1, len(state1['busy_cases']) + state1['finalized_cases'])) -
-                                    (len(state2['busy_cases']) / max(1, len(state2['busy_cases']) + state2['finalized_cases'])))
-    
+    # Tasks and Resources differences calculation
+    def calc_diff(attr):
+        return abs((len(state1[attr]) / max(1, len(state1['unassigned_tasks']) + len(state1['assigned_tasks']))) -
+                   (len(state2[attr]) / max(1, len(state2['unassigned_tasks']) + len(state2['assigned_tasks']))))
+
+    unassigned_tasks_diff = calc_diff('unassigned_tasks')
+    assigned_tasks_diff = calc_diff('assigned_tasks')
+    busy_cases_diff = calc_diff('busy_cases')
     finalized_cases_diff = abs((state1['finalized_cases'] / max(1, len(state1['busy_cases']) + state1['finalized_cases'])) -
-                                    (state2['finalized_cases'] / max(1, len(state2['busy_cases']) + state2['finalized_cases'])))   
-    
+                               (state2['finalized_cases'] / max(1, len(state2['busy_cases']) + state2['finalized_cases'])))
     resource_utilization_diff = abs((len(state1['busy_resources']) / max(1, len(state1['available_resources']) + len(state1['busy_resources']) + len(state1['away_resources']) + len(state1['reserved_resources']))) -
                                     (len(state2['busy_resources']) / max(1, len(state2['available_resources']) + len(state2['busy_resources']) + len(state2['away_resources']) + len(state2['reserved_resources']))))
-    
     resource_reserved_diff = abs((len(state1['reserved_resources']) / max(1, len(state1['available_resources']) + len(state1['busy_resources']) + len(state1['away_resources']) + len(state1['reserved_resources']))) -
-                                    (len(state2['reserved_resources']) / max(1, len(state2['available_resources']) + len(state2['busy_resources']) + len(state2['away_resources']) + len(state2['reserved_resources']))))
+                                 (len(state2['reserved_resources']) / max(1, len(state2['available_resources']) + len(state2['busy_resources']) + len(state2['away_resources']) + len(state2['reserved_resources']))))
+
     # Simple attribute comparisons
     simple_attributes = ['total_cycle_time', 'completed_tasks', 'average_completed_tasks']
-    
-    simple_diffs = sum(abs(len(state1[attr]) - len(state2[attr])) if not (isinstance(state1[attr], int) or isinstance(state1[attr], float)) else abs(state1[attr] - state2[attr])
-                       for attr in simple_attributes)
-    
-    different_elements_counter = 0
-    total_length_weight = 0
-    
-    # Attributes to compare using the count_unique_elements function
-    attributes_to_compare = [
-        'unassigned_tasks', 'assigned_tasks', 'available_resources',
-        'busy_resources', 'reserved_resources', 'away_resources',
-        'busy_cases'
-    ]
+    simple_diffs = sum(abs(state1[attr] - state2[attr]) for attr in simple_attributes)
 
-    # Iterate over each attribute and calculate the differences
-    for attr in attributes_to_compare:
-        attr1 = state1[attr]
-        attr2 = state2[attr]
-        total_length_weight += len(attr1) + len(attr2)
-        if attr1 is not None and attr2 is not None:
-            different_elements_counter += count_unique_elements(attr1, attr2)
-                  
-            
-    different_elements_weighted = different_elements_counter / total_length_weight
+    # Attributes to compare using the count_unique_elements function
+    attributes_to_compare = ['unassigned_tasks', 'assigned_tasks', 'available_resources', 'busy_resources', 'reserved_resources', 'away_resources', 'busy_cases']
+    different_elements_counter = sum(count_unique_elements(state1[attr], state2[attr]) for attr in attributes_to_compare)
+    total_length_weight = sum(len(state1[attr]) + len(state2[attr]) for attr in attributes_to_compare)
+    different_elements_weighted = different_elements_counter / total_length_weight if total_length_weight else 0
 
     # Combine all metrics into a single distance measure
-    distance = (time_diff + event_time_diff + assigned_tasks_diff + unassigned_tasks_diff + busy_cases_diff + finalized_cases_diff +
+    distance = (time_diff + event_time_diff + unassigned_tasks_diff + assigned_tasks_diff + busy_cases_diff + finalized_cases_diff +
                 resource_utilization_diff + resource_reserved_diff + simple_diffs) * (1 + different_elements_weighted)
+
     return distance
 
 
 
 def count_unique_elements(attr1, attr2):
-    if isinstance(attr1, set) and isinstance(attr2, set):
-        unique_items = attr1.symmetric_difference(attr2)
-    elif isinstance(attr1, dict) and isinstance(attr2, dict):
-        unique_items = set(attr1.keys()).symmetric_difference(set(attr2.keys()))
-    elif isinstance(attr1, list) and isinstance(attr2, list):
-        unique_items = set(attr1).symmetric_difference(set(attr2))
+    if isinstance(attr1, (set, list)):
+        unique_items = set(attr1).symmetric_difference(attr2)
+    elif isinstance(attr1, dict):
+        unique_items = set(attr1.keys()).symmetric_difference(attr2.keys())
     else:
-        # Fallback for unsupported types
         print("Unsupported types for comparison.")
         return 0
     return len(unique_items)
@@ -354,7 +329,8 @@ def explore_and_merge_simulation_fct(sim_state, max_depth=4, merge_threshold=0.5
     state, assignments = sim_state.simulator.run()
     sim_state.save_simulation_state(state, assignments, state_id)
     deleted_states = 0
-    average_distance = 0
+    total_distance = 0
+    num_comparisons = 0
 
     # A list to store state IDs at each depth for potential merging
     depth_states = {i: [] for i in range(max_depth + 1)}
@@ -372,9 +348,9 @@ def explore_and_merge_simulation_fct(sim_state, max_depth=4, merge_threshold=0.5
 
         # Load the current simulation state and assignments
         assignments, _ = sim_state.load_simulation_state(current_state_id)
+        
 
         for index, (task, resource) in enumerate(assignments):
-            print(f"Exploring state {current_state_id} at depth {current_depth} with assignment {index+1}")
             sim_state.load_simulation_state(current_state_id)
             
             # Construct new state IDs for children
@@ -392,138 +368,67 @@ def explore_and_merge_simulation_fct(sim_state, max_depth=4, merge_threshold=0.5
             # Add the new state ID and depth to the queue
             state_queue.append((current_depth + 1, child_state_id))
         
-        # Starting from depth 7, merge states within the same depth if close enough
-        if current_depth >= 6:
+        # Starting from depth 4, merge states within the same depth if close enough
+        if current_depth >= 3 and max_depth >=4:
             if state_queue:
                 next_element_depth, next_element_state_id = state_queue.popleft()
                 if next_element_depth == current_depth + 1:
                     state_queue.appendleft((next_element_depth, next_element_state_id))
                     to_merge = []
-                    states_to_compare = depth_states[current_depth]
-                    distances = []
+                    states_to_compare = depth_states[current_depth].copy()
+                    print(f"Comparing {len(states_to_compare)} states at depth {current_depth+1} for merging.")
+                    distance_cache = {}
                     while states_to_compare:
                         state_id1 = states_to_compare.pop()
                         if state_id1 in to_merge:
                             continue
+                        sim_state.load_simulation_state(state_id1)
+                        state1 = copy.deepcopy(sim_state.simulator.current_state)
                         for state_id2 in states_to_compare:
-                            print(f"Comparing states {state_id1} and {state_id2} at depth {current_depth}")
-                         # Load and copy the first state
-                            sim_state.load_simulation_state(state_id1)
-                            state1 = copy.deepcopy(sim_state.simulator.current_state)
-                    
-                            # Load and copy the second state
-                            sim_state.load_simulation_state(state_id2)
-                            state2 = copy.deepcopy(sim_state.simulator.current_state)
-                    
-                            distance = calculate_distance(state1, state2)
-                            distances.append(distance)
-                    
+                            pair = tuple(sorted((state_id1, state_id2)))
+                            if pair not in distance_cache:
+                                sim_state.load_simulation_state(state_id2)
+                                state2 = copy.deepcopy(sim_state.simulator.current_state)
+                                distance_cache[pair] = calculate_distance(state1, state2)
+                                
+                            distance = distance_cache[pair]
+                            total_distance += distance
+                            num_comparisons += 1
                             if distance <= merge_threshold:
                                 # Compare average completed tasks and keep the state with the higher average
                                 if state1['average_completed_tasks'] > state2['average_completed_tasks']:
                                     to_merge.append((state_id2, state_id1))  # Remove state_id2, keep state_id1
                                 else:
                                     to_merge.append((state_id1, state_id2))  # Remove state_id1, keep state_id2
-                    if len(distances) > 0:
-                        average_distance = sum(distances) / len(distances)                
-                        print(f"Average distance between states at depth {current_depth}: {distance:.2f}")
+                                                 
                     # Perform the merging by removing states and updating the remaining states in depth_states
                     for remove_id, keep_id in to_merge:
-                        if (remove_id in sim_state.table):    
+                        if remove_id in sim_state.table:    
                             del sim_state.table[remove_id]
                             deleted_states += 1
-                        print(f"Removed state {remove_id} and kept state {keep_id} at depth {current_depth}")
-                else:
+                else: 
                     state_queue.appendleft((next_element_depth, next_element_state_id))
                     
-
+    average_distance = total_distance / num_comparisons if num_comparisons > 0 else 0
     print(f"Exploration finished with {deleted_states} states removed and {len(sim_state.table)-1} total states remaining.")
+    print(f"Average distance between states: {average_distance}")
     return average_distance, deleted_states
 
 
 
-# Monitors memory usage over time.
-def monitor_resources(interval=0.1):
-    global memory_usage
-    memory_usage= []
-    while monitoring:
-        memory_usage.append(psutil.Process().memory_info().rss / (1024 ** 2))  # Convert bytes to MB
-        time.sleep(interval)
 
 
 
 
-
-# Initialize lists to store data for each run
-state_numbers = []
-average_memory_usages = []
-peak_memory_usages = []
-states_deleted = []
-distance_states = []
-
-# Global list to store memory usage data
-memory_usage = []
-
-
-# Run the code snippet 50 times
-for i in range(50):
-    print(f"Run {i+1}")
-    # Reset the monitoring flag and start time
-    monitoring = True
-
-    # Start the monitoring thread
-    monitor_thread = threading.Thread(target=monitor_resources, args=(0.01,))
-    monitor_thread.start()
+my_planner = MyPlanner()
+simulator = Simulator(my_planner, "BPI Challenge 2017 - instance 2.pickle")
+sim_state = SimState(simulator)
+explore_simulation(sim_state, max_depth=5)
     
-    
-    my_planner = MyPlanner()
-    simulator = Simulator(my_planner, "BPI Challenge 2017 - instance 2.pickle")
-    sim_state = SimState(simulator)
-    #explore_simulation_timed(sim_state, goal_timestamp=0.2)
-    distance, deleted = explore_and_merge_simulation_fct(sim_state, max_depth=7, merge_threshold=10)
-    state_numbers.append(len(sim_state.table)-1)
-    states_deleted.append(deleted)
-    distance_states.append(distance)
-    
-    monitoring = False
-    monitor_thread.join()
-    
-
-    # Calculate and store the required data
-    average_memory_usages.append(sum(memory_usage) / len(memory_usage))
-    peak_memory_usages.append(max(memory_usage))
-    time.sleep(10)
-
-
-
-# Calculate averages and peaks from the collected data
-average_state_number = sum(state_numbers) / len(state_numbers)
-peak_state_number = max(state_numbers)
-
-# Create a DataFrame to store the collected data using lists
-df1 = pd.DataFrame({
-    'Average State Number': [average_state_number],
-    'Peak State Number': [peak_state_number],
-    'Average States Deleted': [sum(states_deleted) / len(states_deleted)],
-    'Peak States Deleted': [max(states_deleted)],
-    'Average Distance': [sum(distance_states) / len(distance_states)],
-    'Peak Distance': [max(distance_states)]
-})
-
-df2 = pd.DataFrame({
-    'Average Memory Usage (in MB)': average_memory_usages,
-    'Peak Memory Usage (in MB)': peak_memory_usages
-})
-
-# Save the DataFrame to an Excel file
-df1.to_excel('state_data.xlsx', index=False)
-df2.to_excel('memory_data.xlsx', index=False)
-
-'''
 scenario_tree= ScenarioTree()
 build_scenario_tree(sim_state, scenario_tree, True)
 
 # Visualize the complete scenario tree
 dot = scenario_tree.visualize_scenario_tree(scenario_tree.root)
-dot.render('scenario_tree', view=True, format='pdf')'''
+dot.render('scenario_tree', view=True, format='pdf')
  
